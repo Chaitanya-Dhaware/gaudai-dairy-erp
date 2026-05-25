@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Fonts Configuration */
+.lang-en {
+  --font-head: 'Fraunces', serif;
+  --font-body: 'DM Sans', sans-serif;
+}
+
+.lang-mr {
+  --font-head: 'Tiro Devanagari Marathi', serif;
+  --font-body: 'Noto Sans Devanagari', sans-serif;
+}
+
+body {
+  margin: 0;
+  background-color: #F8F9FA;
+  color: #1A1A1A;
+  font-family: var(--font-body), sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-head), serif;
+}
+
+/* Numeric custom font rule (Always use DM Mono for digits) */
+.font-mono {
+  font-family: 'DM Mono', monospace !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(15, 110, 86, 0.1);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 110, 86, 0.2);
+}
+
+/* Skeleton Loading Animation */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+}
