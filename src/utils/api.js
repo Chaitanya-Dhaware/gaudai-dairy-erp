@@ -20,9 +20,9 @@ const initMockDB = () => {
   if (!localStorage.getItem('GAUDAI_DB_INITIALIZED')) {
     // Seed default farmers
     const farmers = [
-      { farmer_id: 'F-204', name: 'Rajesh Gaikwad', mobile: '9876543210', address: 'Wadgaon Village', milk_type: 'Buffalo', current_due: 25 },
-      { farmer_id: 'F-201', name: 'Anil Deshmukh', mobile: '8877665544', address: 'Shivajinagar', milk_type: 'Cow', current_due: 344 },
-      { farmer_id: 'F-198', name: 'Suresh Patil', mobile: '9988776655', address: 'Koregaon', milk_type: 'Mixed', current_due: 645 }
+      { farmer_id: 'F-01', name: 'Rajesh Gaikwad', mobile: '9876543210', address: 'Wadgaon Village', milk_type: 'Buffalo', current_due: 25 },
+      { farmer_id: 'F-02', name: 'Anil Deshmukh', mobile: '8877665544', address: 'Shivajinagar', milk_type: 'Cow', current_due: 344 },
+      { farmer_id: 'F-03', name: 'Suresh Patil', mobile: '9988776655', address: 'Koregaon', milk_type: 'Mixed', current_due: 645 }
     ];
 
     // Seed default products
@@ -37,22 +37,22 @@ const initMockDB = () => {
 
     // Seed default customers
     const customers = [
-      { customer_id: 'C001', shop_name: 'Rajesh Deshmukh', owner_name: 'Rajesh Deshmukh', mobile: '9422012345', address: 'Satara District', current_due: 12450 },
-      { customer_id: 'C002', shop_name: 'Rahul Dairy', owner_name: 'Rahul Patil', mobile: '9890123456', address: 'Pune Bypass Road', current_due: 2200 },
-      { customer_id: 'C003', shop_name: 'Krishna Sweets', owner_name: 'Madhav Shinde', mobile: '9763221100', address: 'Main Bazar', current_due: 0 }
+      { customer_id: 'c-01', shop_name: 'Rajesh Deshmukh', owner_name: 'Rajesh Deshmukh', mobile: '9422012345', address: 'Satara District', current_due: 12450 },
+      { customer_id: 'c-02', shop_name: 'Rahul Dairy', owner_name: 'Rahul Patil', mobile: '9890123456', address: 'Pune Bypass Road', current_due: 2200 },
+      { customer_id: 'c-03', shop_name: 'Krishna Sweets', owner_name: 'Madhav Shinde', mobile: '9763221100', address: 'Main Bazar', current_due: 0 }
     ];
 
     // Seed default milk collections
     const collections = [
-      { entry_id: 'E001', farmer_id: 'F-204', date: '2026-05-25', milk_type: 'Buffalo', quantity: 12.5, fat: 6.5, snf: 9.0, calculated_rate: 42.0, total_amount: 525, paid_amount: 500, due_amount: 25, status: 'Partial', timestamp: new Date().toISOString() },
-      { entry_id: 'E002', farmer_id: 'F-201', date: '2026-05-25', milk_type: 'Cow', quantity: 8.2, fat: 4.5, snf: 8.5, calculated_rate: 42.0, total_amount: 344, paid_amount: 0, due_amount: 344, status: 'Pending', timestamp: new Date().toISOString() },
-      { entry_id: 'E003', farmer_id: 'F-198', date: '2026-05-25', milk_type: 'Mixed', quantity: 15.0, fat: 5.0, snf: 8.8, calculated_rate: 43.0, total_amount: 645, paid_amount: 0, due_amount: 645, status: 'Pending', timestamp: new Date().toISOString() }
+      { entry_id: 'E001', farmer_id: 'F-01', date: '2026-05-25', milk_type: 'Buffalo', quantity: 12.5, fat: 6.5, snf: 9.0, calculated_rate: 42.0, total_amount: 525, paid_amount: 500, due_amount: 25, status: 'Partial', timestamp: new Date().toISOString() },
+      { entry_id: 'E002', farmer_id: 'F-02', date: '2026-05-25', milk_type: 'Cow', quantity: 8.2, fat: 4.5, snf: 8.5, calculated_rate: 42.0, total_amount: 344, paid_amount: 0, due_amount: 344, status: 'Pending', timestamp: new Date().toISOString() },
+      { entry_id: 'E003', farmer_id: 'F-03', date: '2026-05-25', milk_type: 'Mixed', quantity: 15.0, fat: 5.0, snf: 8.8, calculated_rate: 43.0, total_amount: 645, paid_amount: 0, due_amount: 645, status: 'Pending', timestamp: new Date().toISOString() }
     ];
 
     // Seed default sales
     const sales = [
-      { bill_id: 'B001', customer_id: 'C001', date: '2026-05-25', items: [{ product_id: 'P001', product_name: 'Full Cream Milk 1L', quantity: 10, unit_price: 64, total: 640 }], total_amount: 640, paid_amount: 640, due_amount: 0, status: 'Paid', timestamp: new Date().toISOString() },
-      { bill_id: 'B002', customer_id: 'C001', date: '2026-05-24', items: [{ product_id: 'P001', product_name: 'Full Cream Milk 1L', quantity: 200, unit_price: 62, total: 12400 }], total_amount: 12400, paid_amount: 0, due_amount: 12450, status: 'Pending', timestamp: new Date().toISOString() }
+      { bill_id: 'B001', customer_id: 'c-01', date: '2026-05-25', items: [{ product_id: 'P001', product_name: 'Full Cream Milk 1L', quantity: 10, unit_price: 64, total: 640 }], total_amount: 640, paid_amount: 640, due_amount: 0, status: 'Paid', timestamp: new Date().toISOString() },
+      { bill_id: 'B002', customer_id: 'c-01', date: '2026-05-24', items: [{ product_id: 'P001', product_name: 'Full Cream Milk 1L', quantity: 200, unit_price: 62, total: 12400 }], total_amount: 12400, paid_amount: 0, due_amount: 12450, status: 'Pending', timestamp: new Date().toISOString() }
     ];
 
     // Seed default expenses
@@ -224,7 +224,7 @@ async function writeToFirestore(action, payload) {
     switch (action) {
       case 'registerFarmer': {
         const snap = await getDocs(collection(db, 'farmers'));
-        let maxId = 200;
+        let maxId = 0;
         snap.forEach(docSnap => {
           const fid = docSnap.data().farmer_id;
           if (fid) {
@@ -232,7 +232,7 @@ async function writeToFirestore(action, payload) {
             if (!isNaN(num) && num > maxId) maxId = num;
           }
         });
-        const farmerId = `F-${maxId + 1}`;
+        const farmerId = `F-${String(maxId + 1).padStart(2, '0')}`;
         const newFarmer = {
           farmer_id: farmerId,
           name: payload.name,
@@ -247,7 +247,7 @@ async function writeToFirestore(action, payload) {
       }
       case 'addCustomer': {
         const snap = await getDocs(collection(db, 'customers'));
-        let maxId = 3;
+        let maxId = 0;
         snap.forEach(docSnap => {
           const cid = docSnap.data().customer_id;
           if (cid) {
@@ -255,7 +255,7 @@ async function writeToFirestore(action, payload) {
             if (!isNaN(num) && num > maxId) maxId = num;
           }
         });
-        const customerId = `C${String(maxId + 1).padStart(3, '0')}`;
+        const customerId = `c-${String(maxId + 1).padStart(2, '0')}`;
         const newCustomer = {
           customer_id: customerId,
           shop_name: payload.shop_name,
@@ -525,14 +525,14 @@ function handleMockAPI(action, payload) {
     // --- COLLECTION MANAGEMENT ---
     case 'registerFarmer': {
       farmers = getMockData('GAUDAI_FARMERS');
-      let maxId = 200;
+      let maxId = 0;
       farmers.forEach(f => {
         if (f.farmer_id) {
           const num = parseInt(f.farmer_id.replace(/\D/g, ''), 10);
           if (!isNaN(num) && num > maxId) maxId = num;
         }
       });
-      const nextFarmerId = `F-${maxId + 1}`;
+      const nextFarmerId = `F-${String(maxId + 1).padStart(2, '0')}`;
       const newFarmer = {
         farmer_id: nextFarmerId,
         name: payload.name,
@@ -612,14 +612,14 @@ function handleMockAPI(action, payload) {
     // --- CUSTOMER MANAGEMENT ---
     case 'addCustomer': {
       customers = getMockData('GAUDAI_CUSTOMERS');
-      let maxId = 3;
+      let maxId = 0;
       customers.forEach(c => {
         if (c.customer_id) {
           const num = parseInt(c.customer_id.replace(/\D/g, ''), 10);
           if (!isNaN(num) && num > maxId) maxId = num;
         }
       });
-      const nextCustId = `C${String(maxId + 1).padStart(3, '0')}`;
+      const nextCustId = `c-${String(maxId + 1).padStart(2, '0')}`;
       const newCustomer = {
         customer_id: nextCustId,
         shop_name: payload.shop_name,

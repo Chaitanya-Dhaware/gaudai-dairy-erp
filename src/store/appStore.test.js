@@ -103,7 +103,7 @@ describe('Gaudai AI Dairy ERP - AppStore', () => {
 
   it('should add milk collection and calculate rate correctly', async () => {
     const store = useAppStore.getState();
-    const testFarmerId = 'F-201'; // Anil Deshmukh from seed data
+    const testFarmerId = 'F-02'; // Anil Deshmukh from seed data
     const farmerBefore = store.farmers.find(f => f.farmer_id === testFarmerId);
     const initialDue = farmerBefore.current_due;
 
@@ -136,7 +136,7 @@ describe('Gaudai AI Dairy ERP - AppStore', () => {
 
   it('should record sales invoice and update customer dues', async () => {
     const store = useAppStore.getState();
-    const testCustomerId = 'C002'; // Rahul Dairy from seed
+    const testCustomerId = 'c-02'; // Rahul Dairy from seed
     const customerBefore = store.customers.find(c => c.customer_id === testCustomerId);
     const initialDue = customerBefore.current_due;
 
