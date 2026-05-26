@@ -1,12 +1,25 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
-import { Droplet, Users, Receipt, PieChart, TrendingUp, TrendingDown, Clock, ShieldCheck } from 'lucide-react';
+import { Droplet, Users, Receipt, PieChart, TrendingUp, TrendingDown, Clock, ShieldCheck, FileSpreadsheet, ExternalLink } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function HomeDashboard() {
   const { t, i18n } = useTranslation();
-  const { setWorkspace, todaySummary, user } = useAppStore();
+  const { setWorkspace, todaySummary, user, settings } = useAppStore();
   const isMarathi = i18n.language === 'mr';
+
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const formatSheetDate = (dateStr) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    const year = parts[0];
+    const monthNum = parseInt(parts[1], 10);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthName = months[monthNum - 1] || "Jan";
+    return `${parts[2]}_${monthName}_${year}`;
+  };
 
   const formatCurrency = (val) => {
     return new Intl.NumberFormat(isMarathi ? 'mr-IN' : 'en-IN', {
@@ -196,6 +209,127 @@ export function HomeDashboard() {
                 {formatCurrency(todaySummary.netProfit)}
               </p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Google Spreadsheet Quick Access Section */}
+      <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-subtle space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h3 className="text-base font-bold font-head text-primary flex items-center space-x-2">
+              <FileSpreadsheet className="w-5 h-5" />
+              <span>{isMarathi ? 'थेट गूगल शीट ॲक्सेस' : 'Google Spreadsheet Access'}</span>
+            </h3>
+            <p className="text-textSecondary text-[11px] mt-1">
+              {isMarathi 
+                ? 'निवडलेल्या तारखेनुसार तुमच्या गूगल ड्राईव्हमधील संबंधित डेटा शीट उघडा.' 
+                : 'Directly open database spreadsheets and daily journals for your selected date.'}
+            </p>
+          </div>
+          
+          <div className="flex items-center space-x-3 w-full sm:w-auto">
+            <label className="text-xs font-bold text-textSecondary uppercase tracking-wider whitespace-nowrap">
+              {isMarathi ? 'तारीख निवडा:' : 'Select Date:'}
+            </label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="px-3 py-2 border border-black/[0.08] rounded-xl text-xs bg-background font-mono font-bold focus:outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Card 1: Milk Collections */}
+          <div className="p-5 border border-black/[0.06] rounded-2xl bg-background flex flex-col justify-between space-y-4">
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-textPrimary uppercase tracking-wider">
+                {isMarathi ? '🥛 दूध संकलन रजिस्टर' : '🥛 Milk Collections Log'}
+              </h4>
+              <p className="text-[10px] text-textSecondary leading-relaxed">
+                {isMarathi 
+                  ? 'शेतकरी दूध संकलन नोंदी आणि प्रलंबित देयके पाहण्यासाठी मुख्य शीट उघडा.' 
+                  : 'Open the collection spreadsheet to review all farmer milk entries and dues.'}
+              </p>
+            </div>
+            {settings?.sheetsIdCollection ? (
+              <a
+                href={`https://docs.google.com/spreadsheets/d/${settings.sheetsIdCollection}/edit`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+              >
+                <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            ) : (
+              <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
+                {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
+              </button>
+            )}
+          </div>
+
+          {/* Card 2: Customers & Sales */}
+          <div className="p-5 border border-black/[0.06] rounded-2xl bg-background flex flex-col justify-between space-y-4">
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-textPrimary uppercase tracking-wider">
+                {isMarathi ? '👥 ग्राहक आणि विक्री रजिस्टर' : '👥 Customers & Sales Log'}
+              </h4>
+              <p className="text-[10px] text-textSecondary leading-relaxed">
+                {isMarathi 
+                  ? 'ग्राहकांची बिले, विक्री इतिहास आणि दुकानदारांची थकबाकी पाहण्यासाठी मुख्य शीट उघडा.' 
+                  : 'Open the customer sales spreadsheet to manage store balances and invoices.'}
+              </p>
+            </div>
+            {settings?.sheetsIdCustomer ? (
+              <a
+                href={`https://docs.google.com/spreadsheets/d/${settings.sheetsIdCustomer}/edit`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+              >
+                <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            ) : (
+              <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
+                {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
+              </button>
+            )}
+          </div>
+
+          {/* Card 3: Expenses */}
+          <div className="p-5 border border-black/[0.06] rounded-2xl bg-background flex flex-col justify-between space-y-4">
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-textPrimary uppercase tracking-wider">
+                {isMarathi ? '💸 दैनिक खर्च रजिस्टर' : '💸 Daily Expenses Log'}
+              </h4>
+              <p className="text-[10px] text-textSecondary leading-relaxed">
+                {isMarathi 
+                  ? `खर्च मुख्य रजिस्टरमध्ये आणि दैनिक विभागात जतन केले जातात.` 
+                  : `Expenses are archived by date. Open sheet and check the bottom tab bar.`}
+              </p>
+              <div className="bg-primary/5 border border-primary/10 rounded-lg p-2 font-mono text-[9px] text-primary mt-1">
+                {isMarathi ? 'खर्च टॅबचे नाव:' : 'Target Tab Name:'} <strong className="underline">Daily_{formatSheetDate(selectedDate)}</strong>
+              </div>
+            </div>
+            {settings?.sheetsIdExpense ? (
+              <a
+                href={`https://docs.google.com/spreadsheets/d/${settings.sheetsIdExpense}/edit`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+              >
+                <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            ) : (
+              <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
+                {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
+              </button>
+            )}
           </div>
         </div>
       </div>
