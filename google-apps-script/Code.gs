@@ -116,6 +116,12 @@ function doPost(e) {
     // 1. Load IDs from PropertiesService (fast, persisted)
     loadConfigFromProperties();
 
+    // Override configuration with IDs supplied in request payload
+    if (requestData.sheetsIdMaster) CONFIG.MASTER_DB_ID = requestData.sheetsIdMaster;
+    if (requestData.sheetsIdCollection) CONFIG.COLLECTION_DB_ID = requestData.sheetsIdCollection;
+    if (requestData.sheetsIdCustomer) CONFIG.CUSTOMER_DB_ID = requestData.sheetsIdCustomer;
+    if (requestData.sheetsIdExpense) CONFIG.EXPENSE_DB_ID = requestData.sheetsIdExpense;
+
     // 2. If master still not known, check if request sent it (settings save)
     if (!CONFIG.MASTER_DB_ID && requestData.sheetsIdMaster) {
       CONFIG.MASTER_DB_ID = requestData.sheetsIdMaster;

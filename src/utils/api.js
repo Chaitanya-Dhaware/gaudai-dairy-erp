@@ -217,6 +217,76 @@ async function syncWriteToFirestore(action, responseData, payload) {
   }
 }
 
+// Direct write to Firestore for master tables (Firebase is source of truth)
+async function writeToFirestore(action, payload) {
+  if (!db) return { success: false, error: 'Database not initialized' };
+  try {
+    switch (action) {
+      case 'registerFarmer': {
+        const countSnap = await getDocs(collection(db, 'farmers'));
+        const farmerId = `F-${countSnap.size + 201}`;
+        const newFarmer = {
+          farmer_id: farmerId,
+          name: payload.name,
+          mobile: payload.mobile || '',
+          address: payload.address || '',
+          milk_type: payload.milk_type || 'Cow',
+          current_due: 0,
+          created_at: new Date().toISOString()
+        };
+        await setDoc(doc(db, 'farmers', farmerId), newFarmer);
+        return { success: true, message: 'Farmer registered successfully', data: newFarmer };
+      }
+      case 'addCustomer': {
+        const countSnap = await getDocs(collection(db, 'customers'));
+        const customerId = `C${String(countSnap.size + 201).padStart(3, '0')}`;
+        const newCustomer = {
+          customer_id: customerId,
+          shop_name: payload.shop_name,
+          owner_name: payload.owner_name,
+          mobile: payload.mobile || '',
+          address: payload.address || '',
+          current_due: 0,
+          created_at: new Date().toISOString()
+        };
+        await setDoc(doc(db, 'customers', customerId), newCustomer);
+        return { success: true, message: 'Customer added successfully', data: newCustomer };
+      }
+      case 'addProduct': {
+        const countSnap = await getDocs(collection(db, 'products'));
+        const productId = `P${String(countSnap.size + 101).padStart(3, '0')}`;
+        const newProduct = {
+          product_id: productId,
+          product_name: payload.product_name,
+          category: payload.category || 'Other',
+          unit_price: parseFloat(payload.unit_price),
+          status: 'Active',
+          updated_at: new Date().toISOString()
+        };
+        await setDoc(doc(db, 'products', productId), newProduct);
+        return { success: true, message: 'Product added successfully', data: newProduct };
+      }
+      case 'updateProduct': {
+        const prodRef = doc(db, 'products', payload.product_id);
+        await updateDoc(prodRef, {
+          unit_price: parseFloat(payload.data.unit_price),
+          updated_at: new Date().toISOString()
+        });
+        return { success: true, message: 'Product updated successfully' };
+      }
+      case 'updateSettings': {
+        await setDoc(doc(db, 'settings', 'general'), payload);
+        return { success: true, message: 'Settings updated successfully' };
+      }
+      default:
+        return { success: false, message: `Write action ${action} not supported` };
+    }
+  } catch (err) {
+    console.error(`Firestore direct write failed for action ${action}:`, err);
+    return { success: false, error: err.message };
+  }
+}
+
 // Fetch backups from Firestore when Apps Script fails
 async function readFromFirestore(action) {
   if (!db) return { success: false, error: 'Database not initialized' };
@@ -357,10 +427,28 @@ async function readFromFirestore(action) {
 export async function callAPI(action, payload = {}) {
   let response;
 
+  const firestoreDirectActions = [
+    'registerFarmer', 'getFarmerList',
+    'addCustomer', 'getCustomerList',
+    'addProduct', 'updateProduct', 'getProductList',
+    'getSettings', 'updateSettings'
+  ];
+
   if (IS_MOCK_MODE) {
     initMockDB();
     await delay(600); // Simulate network speed
     response = handleMockAPI(action, payload);
+  } else if (firestoreDirectActions.includes(action)) {
+    try {
+      if (action.startsWith('get')) {
+        response = await readFromFirestore(action);
+      } else {
+        response = await writeToFirestore(action, payload);
+      }
+    } catch (err) {
+      console.error(`Firestore direct action ${action} failed, falling back to mock:`, err);
+      response = handleMockAPI(action, payload);
+    }
   } else {
     try {
       const res = await fetch(APPS_SCRIPT_URL, {

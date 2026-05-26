@@ -89,15 +89,26 @@ export const useAppStore = create((set, get) => ({
         set({ settings: settingsRes.data });
       }
 
+      const settings = get().settings;
       const [farmersRes, productsRes, customersRes, collectionsRes, salesRes, expensesRes, summaryRes, cashflowRes] = await Promise.all([
         callAPI('getFarmerList'),
         callAPI('getProductList'),
         callAPI('getCustomerList'),
-        callAPI('getCollectionEntries'),
-        callAPI('getSalesHistory'),
-        callAPI('getExpenses'),
-        callAPI('getMasterFinancialSummary'),
-        callAPI('getCashFlowStatement')
+        callAPI('getCollectionEntries', { sheetsIdCollection: settings.sheetsIdCollection }),
+        callAPI('getSalesHistory', { sheetsIdCustomer: settings.sheetsIdCustomer }),
+        callAPI('getExpenses', { sheetsIdExpense: settings.sheetsIdExpense }),
+        callAPI('getMasterFinancialSummary', {
+          sheetsIdCollection: settings.sheetsIdCollection,
+          sheetsIdCustomer: settings.sheetsIdCustomer,
+          sheetsIdExpense: settings.sheetsIdExpense,
+          sheetsIdMaster: settings.sheetsIdMaster
+        }),
+        callAPI('getCashFlowStatement', {
+          sheetsIdCollection: settings.sheetsIdCollection,
+          sheetsIdCustomer: settings.sheetsIdCustomer,
+          sheetsIdExpense: settings.sheetsIdExpense,
+          sheetsIdMaster: settings.sheetsIdMaster
+        })
       ]);
 
       set({
@@ -121,9 +132,20 @@ export const useAppStore = create((set, get) => ({
   // Refresh dynamic summaries (P&L and Cashflow)
   refreshSummary: async () => {
     try {
+      const settings = get().settings;
       const [summaryRes, cashflowRes] = await Promise.all([
-        callAPI('getMasterFinancialSummary'),
-        callAPI('getCashFlowStatement')
+        callAPI('getMasterFinancialSummary', {
+          sheetsIdCollection: settings.sheetsIdCollection,
+          sheetsIdCustomer: settings.sheetsIdCustomer,
+          sheetsIdExpense: settings.sheetsIdExpense,
+          sheetsIdMaster: settings.sheetsIdMaster
+        }),
+        callAPI('getCashFlowStatement', {
+          sheetsIdCollection: settings.sheetsIdCollection,
+          sheetsIdCustomer: settings.sheetsIdCustomer,
+          sheetsIdExpense: settings.sheetsIdExpense,
+          sheetsIdMaster: settings.sheetsIdMaster
+        })
       ]);
       set({
         todaySummary: summaryRes.success ? summaryRes.data : get().todaySummary,
@@ -159,8 +181,9 @@ export const useAppStore = create((set, get) => ({
   addMilkCollection: async (data) => {
     set({ loading: true });
     try {
+      const settings = get().settings;
       // Inject calculated rate in payload
-      const rate = data.fat * get().settings.baseRate;
+      const rate = data.fat * settings.baseRate;
       const totalAmount = rate * data.quantity;
       const dueAmount = totalAmount - data.paidAmount;
 
@@ -168,7 +191,8 @@ export const useAppStore = create((set, get) => ({
         ...data,
         calculated_rate: rate,
         total_amount: totalAmount,
-        due_amount: dueAmount
+        due_amount: dueAmount,
+        sheetsIdCollection: settings.sheetsIdCollection
       };
 
       const res = await callAPI('addMilkCollection', payload);
@@ -177,9 +201,14 @@ export const useAppStore = create((set, get) => ({
         
         // Reload related caches
         const [updatedCol, updatedFar, updatedSum] = await Promise.all([
-          callAPI('getCollectionEntries'),
+          callAPI('getCollectionEntries', { sheetsIdCollection: settings.sheetsIdCollection }),
           callAPI('getFarmerList'),
-          callAPI('getMasterFinancialSummary')
+          callAPI('getMasterFinancialSummary', {
+            sheetsIdCollection: settings.sheetsIdCollection,
+            sheetsIdCustomer: settings.sheetsIdCustomer,
+            sheetsIdExpense: settings.sheetsIdExpense,
+            sheetsIdMaster: settings.sheetsIdMaster
+          })
         ]);
         if (updatedCol.success) set({ collections: updatedCol.data });
         if (updatedFar.success) set({ farmers: updatedFar.data });
@@ -199,13 +228,19 @@ export const useAppStore = create((set, get) => ({
   markFarmerPaid: async (entryId) => {
     set({ loading: true });
     try {
-      const res = await callAPI('markFarmerPaid', { entryId });
+      const settings = get().settings;
+      const res = await callAPI('markFarmerPaid', { entryId, sheetsIdCollection: settings.sheetsIdCollection });
       if (res.success) {
         toast.success('पेमेंट यशस्वी / Payment marked paid!');
         const [updatedCol, updatedFar, updatedSum] = await Promise.all([
-          callAPI('getCollectionEntries'),
+          callAPI('getCollectionEntries', { sheetsIdCollection: settings.sheetsIdCollection }),
           callAPI('getFarmerList'),
-          callAPI('getMasterFinancialSummary')
+          callAPI('getMasterFinancialSummary', {
+            sheetsIdCollection: settings.sheetsIdCollection,
+            sheetsIdCustomer: settings.sheetsIdCustomer,
+            sheetsIdExpense: settings.sheetsIdExpense,
+            sheetsIdMaster: settings.sheetsIdMaster
+          })
         ]);
         if (updatedCol.success) set({ collections: updatedCol.data });
         if (updatedFar.success) set({ farmers: updatedFar.data });
@@ -282,13 +317,19 @@ export const useAppStore = create((set, get) => ({
   addSale: async (data) => {
     set({ loading: true });
     try {
-      const res = await callAPI('addSale', data);
+      const settings = get().settings;
+      const res = await callAPI('addSale', { ...data, sheetsIdCustomer: settings.sheetsIdCustomer });
       if (res.success) {
         toast.success('बिल जतन झाले / Bill saved!');
         const [updatedSal, updatedCust, updatedSum] = await Promise.all([
-          callAPI('getSalesHistory'),
+          callAPI('getSalesHistory', { sheetsIdCustomer: settings.sheetsIdCustomer }),
           callAPI('getCustomerList'),
-          callAPI('getMasterFinancialSummary')
+          callAPI('getMasterFinancialSummary', {
+            sheetsIdCollection: settings.sheetsIdCollection,
+            sheetsIdCustomer: settings.sheetsIdCustomer,
+            sheetsIdExpense: settings.sheetsIdExpense,
+            sheetsIdMaster: settings.sheetsIdMaster
+          })
         ]);
         if (updatedSal.success) set({ sales: updatedSal.data });
         if (updatedCust.success) set({ customers: updatedCust.data });
@@ -307,13 +348,19 @@ export const useAppStore = create((set, get) => ({
   recordCustomerPayment: async (customerId, amount) => {
     set({ loading: true });
     try {
-      const res = await callAPI('recordPayment', { customer_id: customerId, amount });
+      const settings = get().settings;
+      const res = await callAPI('recordPayment', { customer_id: customerId, amount, sheetsIdCustomer: settings.sheetsIdCustomer });
       if (res.success) {
         toast.success('देयक नोंद यशस्वी / Payment recorded!');
         const [updatedCust, updatedSal, updatedSum] = await Promise.all([
           callAPI('getCustomerList'),
-          callAPI('getSalesHistory'),
-          callAPI('getMasterFinancialSummary')
+          callAPI('getSalesHistory', { sheetsIdCustomer: settings.sheetsIdCustomer }),
+          callAPI('getMasterFinancialSummary', {
+            sheetsIdCollection: settings.sheetsIdCollection,
+            sheetsIdCustomer: settings.sheetsIdCustomer,
+            sheetsIdExpense: settings.sheetsIdExpense,
+            sheetsIdMaster: settings.sheetsIdMaster
+          })
         ]);
         if (updatedCust.success) set({ customers: updatedCust.data });
         if (updatedSal.success) set({ sales: updatedSal.data });
@@ -333,12 +380,18 @@ export const useAppStore = create((set, get) => ({
   addExpense: async (data) => {
     set({ loading: true });
     try {
-      const res = await callAPI('addExpense', data);
+      const settings = get().settings;
+      const res = await callAPI('addExpense', { ...data, sheetsIdExpense: settings.sheetsIdExpense });
       if (res.success) {
         toast.success('खर्च नोंदवला / Expense added!');
         const [updatedExp, updatedSum] = await Promise.all([
-          callAPI('getExpenses'),
-          callAPI('getMasterFinancialSummary')
+          callAPI('getExpenses', { sheetsIdExpense: settings.sheetsIdExpense }),
+          callAPI('getMasterFinancialSummary', {
+            sheetsIdCollection: settings.sheetsIdCollection,
+            sheetsIdCustomer: settings.sheetsIdCustomer,
+            sheetsIdExpense: settings.sheetsIdExpense,
+            sheetsIdMaster: settings.sheetsIdMaster
+          })
         ]);
         if (updatedExp.success) set({ expenses: updatedExp.data });
         if (updatedSum.success) set({ todaySummary: updatedSum.data });
@@ -356,12 +409,18 @@ export const useAppStore = create((set, get) => ({
   deleteExpense: async (expenseId) => {
     set({ loading: true });
     try {
-      const res = await callAPI('deleteExpense', { expense_id: expenseId });
+      const settings = get().settings;
+      const res = await callAPI('deleteExpense', { expense_id: expenseId, sheetsIdExpense: settings.sheetsIdExpense });
       if (res.success) {
         toast.success('खर्च हटवला / Expense deleted!');
         const [updatedExp, updatedSum] = await Promise.all([
-          callAPI('getExpenses'),
-          callAPI('getMasterFinancialSummary')
+          callAPI('getExpenses', { sheetsIdExpense: settings.sheetsIdExpense }),
+          callAPI('getMasterFinancialSummary', {
+            sheetsIdCollection: settings.sheetsIdCollection,
+            sheetsIdCustomer: settings.sheetsIdCustomer,
+            sheetsIdExpense: settings.sheetsIdExpense,
+            sheetsIdMaster: settings.sheetsIdMaster
+          })
         ]);
         if (updatedExp.success) set({ expenses: updatedExp.data });
         if (updatedSum.success) set({ todaySummary: updatedSum.data });
