@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
-import { Search, UserPlus, FileInput, IndianRupee, BarChart2, ShieldAlert } from 'lucide-react';
+import { Search, UserPlus, FileInput, IndianRupee, BarChart2, ShieldAlert, Calendar } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function CollectionWorkspace() {
@@ -69,6 +69,14 @@ export function CollectionWorkspace() {
         >
           {t('collection.summary')}
         </button>
+        <button
+          onClick={() => setActiveTab('daily-transactions')}
+          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+            activeTab === 'daily-transactions' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
+          }`}
+        >
+          {isMarathi ? 'दैनिक व्यवहार' : 'Daily Transactions'}
+        </button>
       </div>
 
       {/* Render sub tab */}
@@ -111,6 +119,16 @@ export function CollectionWorkspace() {
             t={t}
             isMarathi={isMarathi}
             formatCurrency={formatCurrency}
+          />
+        )}
+        {activeTab === 'daily-transactions' && (
+          <DailyTransactions
+            farmers={farmers}
+            collections={collections}
+            t={t}
+            isMarathi={isMarathi}
+            formatCurrency={formatCurrency}
+            formatDate={formatDate}
           />
         )}
       </div>
@@ -328,7 +346,8 @@ function MilkCollectionEntry({
       quantity: qtyVal,
       fat: fatVal,
       snf: parseFloat(snf) || 8.5,
-      paidAmount: paidVal
+      paidAmount: paidVal,
+      paid_amount: paidVal
     });
 
     if (success) {
@@ -739,6 +758,143 @@ function DailySummary({ collections, t, isMarathi, formatCurrency }) {
               <div className="h-full bg-textPrimary" style={{ width: `${totalQty > 0 ? (mixLiters/totalQty)*100 : 0}%` }} />
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- SUB-SCREEN 1E: DAILY TRANSACTIONS ---
+function DailyTransactions({
+  farmers,
+  collections,
+  t,
+  isMarathi,
+  formatCurrency,
+  formatDate
+}) {
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Filter collections by date
+  const filteredCols = collections.filter(c => c.date === selectedDate);
+
+  // Summary calculations for selected date
+  const totalQty = filteredCols.reduce((s, c) => s + c.quantity, 0);
+  const totalAmount = filteredCols.reduce((s, c) => s + c.total_amount, 0);
+  const totalPaid = filteredCols.reduce((s, c) => s + c.paid_amount, 0);
+  const totalDue = filteredCols.reduce((s, c) => s + c.due_amount, 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Date Filter Panel */}
+      <div className="bg-white p-5 rounded-2xl border border-black/[0.08] shadow-subtle flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h4 className="text-sm font-bold text-textPrimary uppercase tracking-wider">
+            {isMarathi ? 'दैनिक व्यवहार शोध' : 'Daily Transactions Search'}
+          </h4>
+          <p className="text-[11px] text-textSecondary mt-0.5">
+            {isMarathi ? 'व्यवहार पाहण्यासाठी तारीख निवडा' : 'Select a date to view transactions'}
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Calendar className="w-4 h-4 text-primary" />
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="px-3 py-1.5 border border-black/[0.08] rounded-xl text-xs bg-background focus:outline-none focus:border-primary font-mono"
+          />
+        </div>
+      </div>
+
+      {/* Metric Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-black/[0.08] shadow-subtle">
+          <p className="text-[10px] text-textSecondary font-bold uppercase tracking-wider">
+            {isMarathi ? 'एकूण प्रमाण' : 'Total Liters'}
+          </p>
+          <p className="text-lg font-bold font-mono text-primary mt-1">{totalQty.toFixed(1)} L</p>
+        </div>
+        <div className="bg-white p-5 rounded-2xl border border-black/[0.08] shadow-subtle">
+          <p className="text-[10px] text-textSecondary font-bold uppercase tracking-wider">
+            {isMarathi ? 'एकूण दूध किंमत' : 'Total Amount'}
+          </p>
+          <p className="text-lg font-bold font-mono text-textPrimary mt-1">{formatCurrency(totalAmount)}</p>
+        </div>
+        <div className="bg-white p-5 rounded-2xl border border-black/[0.08] shadow-subtle">
+          <p className="text-[10px] text-textSecondary font-bold uppercase tracking-wider">
+            {isMarathi ? 'एकूण दिलेली रक्कम' : 'Total Paid'}
+          </p>
+          <p className="text-lg font-bold font-mono text-accent mt-1">{formatCurrency(totalPaid)}</p>
+        </div>
+        <div className="bg-white p-5 rounded-2xl border border-black/[0.08] shadow-subtle">
+          <p className="text-[10px] text-textSecondary font-bold uppercase tracking-wider">
+            {isMarathi ? 'एकूण बाकी' : 'Total Due'}
+          </p>
+          <p className="text-lg font-bold font-mono text-danger mt-1">{formatCurrency(totalDue)}</p>
+        </div>
+      </div>
+
+      {/* Transactions Table */}
+      <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-subtle space-y-4">
+        <h4 className="text-sm font-bold text-textPrimary uppercase tracking-wider border-b border-black/[0.04] pb-4">
+          {isMarathi ? 'दुधाचे व्यवहार यादी' : 'Daily Milk Collections List'}
+        </h4>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-black/[0.08] bg-background">
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{isMarathi ? 'तारीख' : 'Date'}</th>
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{isMarathi ? 'शेतकऱ्याचे नाव' : 'Farmer Name'}</th>
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{isMarathi ? 'प्रमाण (L)' : 'Qty (L)'}</th>
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{isMarathi ? 'फॅट' : 'Fat'}</th>
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{isMarathi ? 'दर' : 'Rate'}</th>
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{isMarathi ? 'एकूण रक्कम' : 'Total Amount'}</th>
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{isMarathi ? 'जमा' : 'Paid'}</th>
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{isMarathi ? 'बाकी' : 'Due'}</th>
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{isMarathi ? 'स्थिती' : 'Status'}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-black/[0.04]">
+              {filteredCols.map((c) => {
+                const farmer = farmers.find(f => f.farmer_id === c.farmer_id);
+                return (
+                  <tr key={c.entry_id} className="hover:bg-black/[0.01]">
+                    <td className="py-3 px-4 font-mono text-textSecondary">{formatDate(c.date)}</td>
+                    <td className="py-3 px-4">
+                      <p className="font-semibold text-textPrimary">{farmer?.name || 'Unknown Farmer'}</p>
+                      <p className="text-[10px] text-textSecondary font-mono">{c.farmer_id}</p>
+                    </td>
+                    <td className="py-3 px-4 font-mono font-medium">{c.quantity} L</td>
+                    <td className="py-3 px-4 font-mono">{c.fat}</td>
+                    <td className="py-3 px-4 font-mono">{formatCurrency(c.calculated_rate)}</td>
+                    <td className="py-3 px-4 font-mono font-semibold">{formatCurrency(c.total_amount)}</td>
+                    <td className="py-3 px-4 font-mono text-primary">{formatCurrency(c.paid_amount)}</td>
+                    <td className={`py-3 px-4 font-mono font-semibold ${c.due_amount > 0 ? 'text-danger' : 'text-textSecondary'}`}>
+                      {formatCurrency(c.due_amount)}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold border ${
+                        c.status === 'Paid' ? 'bg-primary/5 text-primary border-primary/20' : 
+                        c.status === 'Partial' ? 'bg-accent/5 text-accent border-accent/20' : 
+                        'bg-danger/5 text-danger border-danger/20'
+                      }`}>
+                        {t(`status.${c.status.toLowerCase()}`)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredCols.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-textSecondary">
+                    {isMarathi ? 'निवडलेल्या तारखेसाठी व्यवहार आढळले नाहीत.' : 'No transactions found for the selected date.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

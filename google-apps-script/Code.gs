@@ -592,10 +592,19 @@ function getCollectionEntries() {
   var values = sheet.getDataRange().getValues();
   var list = [];
   for (var i = values.length - 1; i >= 1; i--) {
+    var rawDate = values[i][2];
+    var formattedDate = "";
+    if (rawDate) {
+      if (rawDate instanceof Date) {
+        formattedDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      } else {
+        formattedDate = String(rawDate).split('T')[0];
+      }
+    }
     list.push({
       entry_id: values[i][0],
       farmer_id: values[i][1],
-      date: values[i][2],
+      date: formattedDate,
       milk_type: values[i][3],
       quantity: parseSafeFloat(values[i][4]),
       fat: parseSafeFloat(values[i][5]),
@@ -837,10 +846,19 @@ function getSalesHistory() {
   var values = sheet.getDataRange().getValues();
   var list = [];
   for (var i = values.length - 1; i >= 1; i--) {
+    var rawDate = values[i][2];
+    var formattedDate = "";
+    if (rawDate) {
+      if (rawDate instanceof Date) {
+        formattedDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      } else {
+        formattedDate = String(rawDate).split('T')[0];
+      }
+    }
     list.push({
       bill_id: values[i][0],
       customer_id: values[i][1],
-      date: values[i][2],
+      date: formattedDate,
       total_amount: parseSafeFloat(values[i][3]),
       paid_amount: parseSafeFloat(values[i][4]),
       due_amount: parseSafeFloat(values[i][5]),
@@ -920,9 +938,18 @@ function getExpenses() {
   var values = sheet.getDataRange().getValues();
   var list = [];
   for (var i = values.length - 1; i >= 1; i--) {
+    var rawDate = values[i][1];
+    var formattedDate = "";
+    if (rawDate) {
+      if (rawDate instanceof Date) {
+        formattedDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      } else {
+        formattedDate = String(rawDate).split('T')[0];
+      }
+    }
     list.push({
       expense_id: values[i][0],
-      date: values[i][1],
+      date: formattedDate,
       reason: values[i][2],
       amount: parseSafeFloat(values[i][3]),
       category: values[i][4],

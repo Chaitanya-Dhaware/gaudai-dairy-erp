@@ -183,12 +183,14 @@ export const useAppStore = create((set, get) => ({
     try {
       const settings = get().settings;
       // Inject calculated rate in payload
+      const paidVal = data.paid_amount !== undefined ? data.paid_amount : (data.paidAmount !== undefined ? data.paidAmount : 0);
       const rate = data.fat * settings.baseRate;
       const totalAmount = rate * data.quantity;
-      const dueAmount = totalAmount - data.paidAmount;
+      const dueAmount = totalAmount - paidVal;
 
       const payload = {
         ...data,
+        paid_amount: paidVal,
         calculated_rate: rate,
         total_amount: totalAmount,
         due_amount: dueAmount,
