@@ -457,8 +457,17 @@ function registerFarmer(data) {
   var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
   var sheet = ss.getSheetByName("Farmers");
   var rows = sheet.getDataRange().getValues();
-  var count = rows.length;
-  var farmerId = "F" + String(count).padStart(3, '0');
+  var maxId = 0;
+  for (var i = 1; i < rows.length; i++) {
+    var fid = rows[i][0];
+    if (fid) {
+      var num = parseInt(fid.replace(/\D/g, ""), 10);
+      if (!isNaN(num) && num > maxId) {
+        maxId = num;
+      }
+    }
+  }
+  var farmerId = "F-" + String(maxId + 1).padStart(2, '0');
 
   sheet.appendRow([
     farmerId,
@@ -593,7 +602,17 @@ function addCustomer(data) {
   var ss = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
   var sheet = ss.getSheetByName("Customers");
   var rows = sheet.getDataRange().getValues();
-  var customerId = "C" + String(rows.length).padStart(3, '0');
+  var maxId = 0;
+  for (var i = 1; i < rows.length; i++) {
+    var cid = rows[i][0];
+    if (cid) {
+      var num = parseInt(cid.replace(/\D/g, ""), 10);
+      if (!isNaN(num) && num > maxId) {
+        maxId = num;
+      }
+    }
+  }
+  var customerId = "c-" + String(maxId + 1).padStart(2, '0');
 
   sheet.appendRow([
     customerId,
@@ -604,7 +623,7 @@ function addCustomer(data) {
     0,
     new Date().toISOString()
   ]);
-  return { success: true, message: "Customer added" };
+  return { success: true, message: "Customer added", data: { customer_id: customerId } };
 }
 
 function getCustomerList() {
