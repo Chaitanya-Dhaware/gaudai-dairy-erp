@@ -525,6 +525,21 @@ function handleMockAPI(action, payload) {
   let farmers, collections, customers, products, sales, expenses, settings;
 
   switch (action) {
+    case 'batchLoadData': {
+      return {
+        success: true,
+        data: {
+          farmers: getMockData('GAUDAI_FARMERS'),
+          products: getMockData('GAUDAI_PRODUCTS'),
+          customers: getMockData('GAUDAI_CUSTOMERS'),
+          collections: getMockData('GAUDAI_COLLECTIONS'),
+          sales: getMockData('GAUDAI_SALES'),
+          expenses: getMockData('GAUDAI_EXPENSES'),
+          summary: handleMockAPI('getMasterFinancialSummary', payload).data,
+          cashFlow: handleMockAPI('getCashFlowStatement', payload).data
+        }
+      };
+    }
     // --- COLLECTION MANAGEMENT ---
     case 'registerFarmer': {
       farmers = getMockData('GAUDAI_FARMERS');

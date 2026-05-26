@@ -90,37 +90,61 @@ export const useAppStore = create((set, get) => ({
       }
 
       const settings = get().settings;
-      const [farmersRes, productsRes, customersRes, collectionsRes, salesRes, expensesRes, summaryRes, cashflowRes] = await Promise.all([
-        callAPI('getFarmerList'),
-        callAPI('getProductList'),
-        callAPI('getCustomerList'),
-        callAPI('getCollectionEntries', { sheetsIdCollection: settings.sheetsIdCollection }),
-        callAPI('getSalesHistory', { sheetsIdCustomer: settings.sheetsIdCustomer }),
-        callAPI('getExpenses', { sheetsIdExpense: settings.sheetsIdExpense }),
-        callAPI('getMasterFinancialSummary', {
-          sheetsIdCollection: settings.sheetsIdCollection,
-          sheetsIdCustomer: settings.sheetsIdCustomer,
-          sheetsIdExpense: settings.sheetsIdExpense,
-          sheetsIdMaster: settings.sheetsIdMaster
-        }),
-        callAPI('getCashFlowStatement', {
-          sheetsIdCollection: settings.sheetsIdCollection,
-          sheetsIdCustomer: settings.sheetsIdCustomer,
-          sheetsIdExpense: settings.sheetsIdExpense,
-          sheetsIdMaster: settings.sheetsIdMaster
-        })
-      ]);
-
-      set({
-        farmers: farmersRes.success ? farmersRes.data : [],
-        products: productsRes.success ? productsRes.data : [],
-        customers: customersRes.success ? customersRes.data : [],
-        collections: collectionsRes.success ? collectionsRes.data : [],
-        sales: salesRes.success ? salesRes.data : [],
-        expenses: expensesRes.success ? expensesRes.data : [],
-        todaySummary: summaryRes.success ? summaryRes.data : get().todaySummary,
-        cashFlow: cashflowRes.success ? cashflowRes.data : []
+      
+      // Try batch load first for ultra-fast startup
+      const batchRes = await callAPI('batchLoadData', {
+        sheetsIdCollection: settings.sheetsIdCollection,
+        sheetsIdCustomer: settings.sheetsIdCustomer,
+        sheetsIdExpense: settings.sheetsIdExpense,
+        sheetsIdMaster: settings.sheetsIdMaster
       });
+
+      if (batchRes && batchRes.success && batchRes.data) {
+        const d = batchRes.data;
+        set({
+          farmers: d.farmers || [],
+          products: d.products || [],
+          customers: d.customers || [],
+          collections: d.collections || [],
+          sales: d.sales || [],
+          expenses: d.expenses || [],
+          todaySummary: d.summary || get().todaySummary,
+          cashFlow: d.cashFlow || []
+        });
+      } else {
+        // Fallback to legacy parallel fetches if batch fails
+        const [farmersRes, productsRes, customersRes, collectionsRes, salesRes, expensesRes, summaryRes, cashflowRes] = await Promise.all([
+          callAPI('getFarmerList'),
+          callAPI('getProductList'),
+          callAPI('getCustomerList'),
+          callAPI('getCollectionEntries', { sheetsIdCollection: settings.sheetsIdCollection }),
+          callAPI('getSalesHistory', { sheetsIdCustomer: settings.sheetsIdCustomer }),
+          callAPI('getExpenses', { sheetsIdExpense: settings.sheetsIdExpense }),
+          callAPI('getMasterFinancialSummary', {
+            sheetsIdCollection: settings.sheetsIdCollection,
+            sheetsIdCustomer: settings.sheetsIdCustomer,
+            sheetsIdExpense: settings.sheetsIdExpense,
+            sheetsIdMaster: settings.sheetsIdMaster
+          }),
+          callAPI('getCashFlowStatement', {
+            sheetsIdCollection: settings.sheetsIdCollection,
+            sheetsIdCustomer: settings.sheetsIdCustomer,
+            sheetsIdExpense: settings.sheetsIdExpense,
+            sheetsIdMaster: settings.sheetsIdMaster
+          })
+        ]);
+
+        set({
+          farmers: farmersRes.success ? farmersRes.data : [],
+          products: productsRes.success ? productsRes.data : [],
+          customers: customersRes.success ? customersRes.data : [],
+          collections: collectionsRes.success ? collectionsRes.data : [],
+          sales: salesRes.success ? salesRes.data : [],
+          expenses: expensesRes.success ? expensesRes.data : [],
+          todaySummary: summaryRes.success ? summaryRes.data : get().todaySummary,
+          cashFlow: cashflowRes.success ? cashflowRes.data : []
+        });
+      }
     } catch (e) {
       console.error('Failed to load data:', e);
       toast.error('डेटा लोड करण्यास अडचण आली / Failed loading data');

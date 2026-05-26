@@ -19,7 +19,9 @@ var CONFIG = {
   EXPENSE_DB_ID: "",
   MASTER_DB_ID: "",
   WHATSAPP_TOKEN: "",
-  WHATSAPP_PHONE_ID: ""
+  WHATSAPP_PHONE_ID: "",
+  BASE_RATE: "8.5",
+  BUSINESS_NAME: "Gaudai AI Dairy"
 };
 
 /**
@@ -34,6 +36,8 @@ function loadConfigFromProperties() {
   CONFIG.EXPENSE_DB_ID     = props.getProperty("EXPENSE_DB_ID")     || "";
   CONFIG.WHATSAPP_TOKEN    = props.getProperty("WHATSAPP_TOKEN")    || "";
   CONFIG.WHATSAPP_PHONE_ID = props.getProperty("WHATSAPP_PHONE_ID") || "";
+  CONFIG.BASE_RATE         = props.getProperty("BASE_RATE")         || "8.5";
+  CONFIG.BUSINESS_NAME     = props.getProperty("BUSINESS_NAME")     || "Gaudai AI Dairy";
 }
 
 /**
@@ -47,6 +51,8 @@ function saveConfigToProperties() {
   if (CONFIG.EXPENSE_DB_ID)    props.setProperty("EXPENSE_DB_ID",    CONFIG.EXPENSE_DB_ID);
   if (CONFIG.WHATSAPP_TOKEN)   props.setProperty("WHATSAPP_TOKEN",   CONFIG.WHATSAPP_TOKEN);
   if (CONFIG.WHATSAPP_PHONE_ID) props.setProperty("WHATSAPP_PHONE_ID", CONFIG.WHATSAPP_PHONE_ID);
+  if (CONFIG.BASE_RATE)         props.setProperty("BASE_RATE",         CONFIG.BASE_RATE);
+  if (CONFIG.BUSINESS_NAME)     props.setProperty("BUSINESS_NAME",     CONFIG.BUSINESS_NAME);
 }
 
 /**
@@ -122,23 +128,30 @@ function doPost(e) {
     if (requestData.sheetsIdCustomer) CONFIG.CUSTOMER_DB_ID = requestData.sheetsIdCustomer;
     if (requestData.sheetsIdExpense) CONFIG.EXPENSE_DB_ID = requestData.sheetsIdExpense;
 
-    // 2. If master still not known, check if request sent it (settings save)
-    if (!CONFIG.MASTER_DB_ID && requestData.sheetsIdMaster) {
-      CONFIG.MASTER_DB_ID = requestData.sheetsIdMaster;
+    // 2. Only open spreadsheet settings and setup sheets if config is not fully set in properties
+    var props = PropertiesService.getScriptProperties();
+    var isSetupCompleted = props.getProperty("SETUP_COMPLETED") === "true";
+
+    if (!isSetupCompleted || !CONFIG.MASTER_DB_ID || !CONFIG.COLLECTION_DB_ID || !CONFIG.CUSTOMER_DB_ID || !CONFIG.EXPENSE_DB_ID) {
+      if (!CONFIG.MASTER_DB_ID && requestData.sheetsIdMaster) {
+        CONFIG.MASTER_DB_ID = requestData.sheetsIdMaster;
+        saveConfigToProperties();
+      }
+      loadSettingsFromSheets();
+      autoSetupSheets();
       saveConfigToProperties();
+      if (CONFIG.MASTER_DB_ID && CONFIG.COLLECTION_DB_ID && CONFIG.CUSTOMER_DB_ID && CONFIG.EXPENSE_DB_ID) {
+        props.setProperty("SETUP_COMPLETED", "true");
+      }
     }
-
-    // 3. Sync remaining IDs from the Settings sheet row values
-    loadSettingsFromSheets();
-
-    // 4. Auto-create missing sub-spreadsheets
-    autoSetupSheets();
-
-    // 5. Persist any newly created IDs
-    saveConfigToProperties();
 
     var result;
     switch (action) {
+      // --- BATCH LOADING ---
+      case 'batchLoadData':
+        result = batchLoadData();
+        break;
+
       // --- COLLECTION DB ACTIONS ---
       case 'registerFarmer':
         result = registerFarmer(requestData);
@@ -393,33 +406,41 @@ function loadSettingsFromSheets() {
 }
 
 function getSettingsTable() {
+  var props = PropertiesService.getScriptProperties();
   var settings = {
-    baseRate: 8.5,
-    businessName: "Gaudai AI Dairy",
-    adminMobile: "",
-    whatsappToken: CONFIG.WHATSAPP_TOKEN,
-    whatsappPhoneId: CONFIG.WHATSAPP_PHONE_ID,
-    sheetsIdCollection: CONFIG.COLLECTION_DB_ID,
-    sheetsIdCustomer: CONFIG.CUSTOMER_DB_ID,
-    sheetsIdExpense: CONFIG.EXPENSE_DB_ID,
-    sheetsIdMaster: CONFIG.MASTER_DB_ID,
-    dueReminderFreq: 2
+    baseRate: parseFloat(props.getProperty("baseRate") || props.getProperty("BASE_RATE") || "8.5"),
+    businessName: props.getProperty("businessName") || props.getProperty("BUSINESS_NAME") || "Gaudai AI Dairy",
+    adminMobile: props.getProperty("adminMobile") || "",
+    whatsappToken: props.getProperty("whatsappToken") || props.getProperty("WHATSAPP_TOKEN") || CONFIG.WHATSAPP_TOKEN || "",
+    whatsappPhoneId: props.getProperty("whatsappPhoneId") || props.getProperty("WHATSAPP_PHONE_ID") || CONFIG.WHATSAPP_PHONE_ID || "",
+    sheetsIdCollection: props.getProperty("sheetsIdCollection") || props.getProperty("COLLECTION_DB_ID") || CONFIG.COLLECTION_DB_ID || "",
+    sheetsIdCustomer: props.getProperty("sheetsIdCustomer") || props.getProperty("CUSTOMER_DB_ID") || CONFIG.CUSTOMER_DB_ID || "",
+    sheetsIdExpense: props.getProperty("sheetsIdExpense") || props.getProperty("EXPENSE_DB_ID") || CONFIG.EXPENSE_DB_ID || "",
+    sheetsIdMaster: props.getProperty("sheetsIdMaster") || props.getProperty("MASTER_DB_ID") || CONFIG.MASTER_DB_ID || MASTER_SHEET_ID_OVERRIDE || "",
+    dueReminderFreq: parseInt(props.getProperty("dueReminderFreq") || "2")
   };
-  try {
-    var ss = SpreadsheetApp.openById(CONFIG.MASTER_DB_ID);
-    var sheet = ss.getSheetByName("Settings");
-    if (sheet) {
-      var data = sheet.getDataRange().getValues();
-      for (var i = 1; i < data.length; i++) {
-        var key = data[i][0];
-        var val = data[i][1];
-        if (key === 'baseRate') settings.baseRate = parseFloat(val);
-        else if (key === 'businessName') settings.businessName = val;
-        else if (key === 'adminMobile') settings.adminMobile = val;
-        else if (key === 'dueReminderFreq') settings.dueReminderFreq = parseInt(val);
+  
+  // If baseRate is default or keys are missing, we can try to sync from sheet once
+  if (!props.getProperty("SETTINGS_CACHED") && CONFIG.MASTER_DB_ID) {
+    try {
+      var ss = SpreadsheetApp.openById(CONFIG.MASTER_DB_ID);
+      var sheet = ss.getSheetByName("Settings");
+      if (sheet) {
+        var data = sheet.getDataRange().getValues();
+        for (var i = 1; i < data.length; i++) {
+          var key = data[i][0];
+          var val = data[i][1];
+          props.setProperty(key, String(val));
+          if (key === 'baseRate') settings.baseRate = parseFloat(val);
+          else if (key === 'businessName') settings.businessName = val;
+          else if (key === 'adminMobile') settings.adminMobile = val;
+          else if (key === 'dueReminderFreq') settings.dueReminderFreq = parseInt(val);
+        }
+        props.setProperty("SETTINGS_CACHED", "true");
       }
-    }
-  } catch(e) {}
+    } catch(e) {}
+  }
+  
   return settings;
 }
 
@@ -428,26 +449,44 @@ function updateSettingsTable(requestData) {
   if (!masterId) {
     return { success: false, message: "Master sheet ID is missing. Please run setupMaster() from Apps Script editor first." };
   }
-  var ss = SpreadsheetApp.openById(masterId);
-  var sheet = ss.getSheetByName("Settings");
-  if (!sheet) {
-    createSheetIfMissing(ss, "Settings", ["key", "value"]);
-    sheet = ss.getSheetByName("Settings");
-  }
-  sheet.clear();
-  sheet.appendRow(["key", "value"]);
   
+  // Write to spreadsheet Settings sheet
+  try {
+    var ss = SpreadsheetApp.openById(masterId);
+    var sheet = ss.getSheetByName("Settings");
+    if (!sheet) {
+      createSheetIfMissing(ss, "Settings", ["key", "value"]);
+      sheet = ss.getSheetByName("Settings");
+    }
+    sheet.clear();
+    sheet.appendRow(["key", "value"]);
+    
+    var keys = Object.keys(requestData);
+    keys.forEach(function(k) {
+      sheet.appendRow([k, requestData[k]]);
+    });
+  } catch(e) {}
+
+  // Update properties memory for ultra-fast config lookup!
+  var props = PropertiesService.getScriptProperties();
   var keys = Object.keys(requestData);
   keys.forEach(function(k) {
-    sheet.appendRow([k, requestData[k]]);
+    if (requestData[k] !== undefined && requestData[k] !== null) {
+      props.setProperty(k, String(requestData[k]));
+    }
   });
 
-  // Also persist any sheet IDs the app sent us into PropertiesService
-  var props = PropertiesService.getScriptProperties();
+  // Keep uppercase properties synchronized as well
   if (requestData.sheetsIdMaster)     props.setProperty("MASTER_DB_ID",     requestData.sheetsIdMaster);
   if (requestData.sheetsIdCollection) props.setProperty("COLLECTION_DB_ID", requestData.sheetsIdCollection);
   if (requestData.sheetsIdCustomer)   props.setProperty("CUSTOMER_DB_ID",   requestData.sheetsIdCustomer);
   if (requestData.sheetsIdExpense)    props.setProperty("EXPENSE_DB_ID",    requestData.sheetsIdExpense);
+  if (requestData.whatsappToken)      props.setProperty("WHATSAPP_TOKEN",    requestData.whatsappToken);
+  if (requestData.whatsappPhoneId)    props.setProperty("WHATSAPP_PHONE_ID", requestData.whatsappPhoneId);
+  if (requestData.baseRate)           props.setProperty("BASE_RATE",         String(requestData.baseRate));
+  if (requestData.businessName)       props.setProperty("BUSINESS_NAME",     requestData.businessName);
+  
+  props.setProperty("SETTINGS_CACHED", "true");
   
   return { success: true, message: "Settings saved successfully" };
 }
@@ -1132,4 +1171,70 @@ function parseSafeFloat(val) {
   var cleaned = String(val).replace(/[^0-9.]/g, '');
   var num = parseFloat(cleaned);
   return isNaN(num) ? 0 : num;
+}
+
+function batchLoadData() {
+  var farmers = [];
+  var collections = [];
+  var products = [];
+  var customers = [];
+  var sales = [];
+  var expenses = [];
+  var summary = {};
+  var cashFlow = [];
+
+  try {
+    farmers = getFarmerList().data;
+  } catch(e) {
+    logErrorToSheets("batchLoadData getFarmerList error: " + e.toString());
+  }
+  try {
+    collections = getCollectionEntries().data;
+  } catch(e) {
+    logErrorToSheets("batchLoadData getCollectionEntries error: " + e.toString());
+  }
+  try {
+    products = getProductList().data;
+  } catch(e) {
+    logErrorToSheets("batchLoadData getProductList error: " + e.toString());
+  }
+  try {
+    customers = getCustomerList().data;
+  } catch(e) {
+    logErrorToSheets("batchLoadData getCustomerList error: " + e.toString());
+  }
+  try {
+    sales = getSalesHistory().data;
+  } catch(e) {
+    logErrorToSheets("batchLoadData getSalesHistory error: " + e.toString());
+  }
+  try {
+    expenses = getExpenses().data;
+  } catch(e) {
+    logErrorToSheets("batchLoadData getExpenses error: " + e.toString());
+  }
+  try {
+    summary = getMasterFinancialSummary().data;
+  } catch(e) {
+    logErrorToSheets("batchLoadData getMasterFinancialSummary error: " + e.toString());
+  }
+  try {
+    cashFlow = getCashFlowStatement().data;
+  } catch(e) {
+    logErrorToSheets("batchLoadData getCashFlowStatement error: " + e.toString());
+  }
+
+  return {
+    success: true,
+    data: {
+      farmers: farmers,
+      collections: collections,
+      products: products,
+      customers: customers,
+      sales: sales,
+      expenses: expenses,
+      summary: summary,
+      cashFlow: cashFlow
+    }
+  };
 }
