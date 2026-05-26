@@ -273,7 +273,7 @@ async function readFromFirestore(action) {
         const expensesList = expensesSnap.docs.map(d => d.data());
         const customersList = customersSnap.docs.map(d => d.data());
 
-        const today = new Date().toISOString().split('T')[0];
+        const today = new Date().toLocaleDateString('en-CA');
 
         const revenueToday = salesList
           .filter(s => s.date === today)
@@ -406,6 +406,7 @@ export async function callAPI(action, payload = {}) {
 
 // Handler for all Workspace endpoints when offline/mocking
 function handleMockAPI(action, payload) {
+  initMockDB();
   let farmers, collections, customers, products, sales, expenses, settings;
 
   switch (action) {
@@ -635,7 +636,7 @@ function handleMockAPI(action, payload) {
       expenses = getMockData('GAUDAI_EXPENSES');
       customers = getMockData('GAUDAI_CUSTOMERS');
       
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date().toLocaleDateString('en-CA');
 
       // Revenue Today: total bill amounts created today + payments today
       const revenueToday = sales

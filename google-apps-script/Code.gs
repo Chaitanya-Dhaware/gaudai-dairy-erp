@@ -836,7 +836,7 @@ function getMasterFinancialSummary() {
   var opExpSum = 0;
   var pendingDuesSum = 0;
   
-  var today = new Date().toISOString().split('T')[0];
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
 
   try {
     var ssCust = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
