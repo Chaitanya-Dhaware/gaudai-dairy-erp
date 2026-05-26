@@ -494,7 +494,7 @@ function getFarmerList() {
       mobile: values[i][2],
       address: values[i][3],
       milk_type: values[i][4],
-      current_due: parseFloat(values[i][5] || 0)
+      current_due: parseSafeFloat(values[i][5])
     });
   }
   return { success: true, data: list };
@@ -505,20 +505,27 @@ function addMilkCollection(data) {
   var colSheet = ss.getSheetByName("Milk_Collections");
   var entryId = "E" + Date.now();
 
-  var status = data.due_amount <= 0 ? 'Paid' : (data.paid_amount > 0 ? 'Partial' : 'Pending');
+  var qty = parseSafeFloat(data.quantity);
+  var fatVal = parseSafeFloat(data.fat);
+  var rateVal = parseSafeFloat(data.calculated_rate);
+  var totalVal = parseSafeFloat(data.total_amount);
+  var paidVal = parseSafeFloat(data.paid_amount);
+  var dueVal = parseSafeFloat(data.due_amount);
+
+  var status = dueVal <= 0 ? 'Paid' : (paidVal > 0 ? 'Partial' : 'Pending');
 
   colSheet.appendRow([
     entryId,
     data.farmer_id,
     data.date,
     data.milk_type,
-    data.quantity,
-    data.fat,
-    data.snf || 8.5,
-    data.calculated_rate,
-    data.total_amount,
-    data.paid_amount,
-    data.due_amount,
+    qty,
+    fatVal,
+    parseSafeFloat(data.snf) || 8.5,
+    rateVal,
+    totalVal,
+    paidVal,
+    dueVal,
     status,
     new Date().toISOString()
   ]);
@@ -528,9 +535,28 @@ function addMilkCollection(data) {
   var farmData = farmSheet.getDataRange().getValues();
   for (var i = 1; i < farmData.length; i++) {
     if (farmData[i][0] === data.farmer_id) {
-      var currentDue = parseFloat(farmData[i][5] || 0) + parseFloat(data.due_amount);
+      var currentDue = parseSafeFloat(farmData[i][5]) + dueVal;
       farmSheet.getRange(i + 1, 6).setValue(currentDue);
       break;
+    }
+  }
+
+  // Log initial payment to Payments sheet if paid amount > 0
+  if (paidVal > 0) {
+    try {
+      var paySheet = ss.getSheetByName("Payments");
+      if (paySheet) {
+        paySheet.appendRow([
+          "PAY-" + Date.now(),
+          data.farmer_id,
+          paidVal,
+          data.date || new Date().toISOString().split('T')[0],
+          "Initial payment for collection entry " + entryId,
+          new Date().toISOString()
+        ]);
+      }
+    } catch(e) {
+      logErrorToSheets("Failed to write initial payment to Payments sheet: " + e.toString());
     }
   }
 
@@ -539,7 +565,25 @@ function addMilkCollection(data) {
     sendWhatsAppReceipt(data);
   } catch(e) {}
 
-  return { success: true, message: "Milk collection saved successfully" };
+  return { 
+    success: true, 
+    message: "Milk collection saved successfully",
+    data: {
+      entry_id: entryId,
+      farmer_id: data.farmer_id,
+      date: data.date,
+      milk_type: data.milk_type,
+      quantity: qty,
+      fat: fatVal,
+      snf: parseSafeFloat(data.snf) || 8.5,
+      calculated_rate: rateVal,
+      total_amount: totalVal,
+      paid_amount: paidVal,
+      due_amount: dueVal,
+      status: status,
+      timestamp: new Date().toISOString()
+    }
+  };
 }
 
 function getCollectionEntries() {
@@ -553,13 +597,13 @@ function getCollectionEntries() {
       farmer_id: values[i][1],
       date: values[i][2],
       milk_type: values[i][3],
-      quantity: parseFloat(values[i][4]),
-      fat: parseFloat(values[i][5]),
-      snf: parseFloat(values[i][6]),
-      calculated_rate: parseFloat(values[i][7]),
-      total_amount: parseFloat(values[i][8]),
-      paid_amount: parseFloat(values[i][9]),
-      due_amount: parseFloat(values[i][10]),
+      quantity: parseSafeFloat(values[i][4]),
+      fat: parseSafeFloat(values[i][5]),
+      snf: parseSafeFloat(values[i][6]),
+      calculated_rate: parseSafeFloat(values[i][7]),
+      total_amount: parseSafeFloat(values[i][8]),
+      paid_amount: parseSafeFloat(values[i][9]),
+      due_amount: parseSafeFloat(values[i][10]),
       status: values[i][11]
     });
   }
@@ -574,8 +618,9 @@ function markFarmerPaid(entryId) {
   for (var i = 1; i < colData.length; i++) {
     if (colData[i][0] === entryId) {
       var farmerId = colData[i][1];
-      var due = parseFloat(colData[i][10]);
-      var paid = parseFloat(colData[i][9]) + due;
+      var due = parseSafeFloat(colData[i][10]);
+      var currentPaid = parseSafeFloat(colData[i][9]);
+      var paid = currentPaid + due;
       
       colSheet.getRange(i + 1, 10).setValue(paid); // update paid
       colSheet.getRange(i + 1, 11).setValue(0);    // clear due
@@ -586,11 +631,29 @@ function markFarmerPaid(entryId) {
       var farmData = farmSheet.getDataRange().getValues();
       for (var j = 1; j < farmData.length; j++) {
         if (farmData[j][0] === farmerId) {
-          var newDue = Math.max(0, parseFloat(farmData[j][5] || 0) - due);
+          var newDue = Math.max(0, parseSafeFloat(farmData[j][5]) - due);
           farmSheet.getRange(j + 1, 6).setValue(newDue);
           break;
         }
       }
+
+      // Also log payment to Payments sheet
+      try {
+        var paySheet = ss.getSheetByName("Payments");
+        if (paySheet) {
+          paySheet.appendRow([
+            "PAY-" + Date.now(),
+            farmerId,
+            due,
+            new Date().toISOString().split('T')[0],
+            "Cleared due for collection entry " + entryId,
+            new Date().toISOString()
+          ]);
+        }
+      } catch(e) {
+        logErrorToSheets("Failed to write to Payments sheet: " + e.toString());
+      }
+      
       break;
     }
   }
@@ -638,7 +701,7 @@ function getCustomerList() {
       owner_name: values[i][2],
       mobile: values[i][3],
       address: values[i][4],
-      current_due: parseFloat(values[i][5] || 0)
+      current_due: parseSafeFloat(values[i][5])
     });
   }
   return { success: true, data: list };
@@ -654,7 +717,7 @@ function getProductList() {
       product_id: values[i][0],
       product_name: values[i][1],
       category: values[i][2],
-      unit_price: parseFloat(values[i][3]),
+      unit_price: parseSafeFloat(values[i][3]),
       status: values[i][4]
     });
   }
@@ -701,15 +764,19 @@ function addSale(data) {
   var salesSheet = ss.getSheetByName("Sales");
   var billId = "B" + Date.now();
 
-  var status = data.due_amount <= 0 ? 'Paid' : (data.paid_amount > 0 ? 'Partial' : 'Pending');
+  var totalVal = parseSafeFloat(data.total_amount);
+  var paidVal = parseSafeFloat(data.paid_amount);
+  var dueVal = parseSafeFloat(data.due_amount);
+
+  var status = dueVal <= 0 ? 'Paid' : (paidVal > 0 ? 'Partial' : 'Pending');
 
   salesSheet.appendRow([
     billId,
     data.customer_id,
     data.date,
-    data.total_amount,
-    data.paid_amount,
-    data.due_amount,
+    totalVal,
+    paidVal,
+    dueVal,
     status,
     new Date().toISOString()
   ]);
@@ -719,12 +786,25 @@ function addSale(data) {
   var custData = custSheet.getDataRange().getValues();
   for (var i = 1; i < custData.length; i++) {
     if (custData[i][0] === data.customer_id) {
-      var currentDue = parseFloat(custData[i][5] || 0) + parseFloat(data.due_amount);
+      var currentDue = parseSafeFloat(custData[i][5]) + dueVal;
       custSheet.getRange(i + 1, 6).setValue(currentDue);
       break;
     }
   }
-  return { success: true };
+  return { 
+    success: true, 
+    data: {
+      bill_id: billId,
+      customer_id: data.customer_id,
+      date: data.date,
+      items: data.items,
+      total_amount: totalVal,
+      paid_amount: paidVal,
+      due_amount: dueVal,
+      status: status,
+      timestamp: new Date().toISOString()
+    }
+  };
 }
 
 function recordPayment(customerId, amount) {
@@ -761,9 +841,9 @@ function getSalesHistory() {
       bill_id: values[i][0],
       customer_id: values[i][1],
       date: values[i][2],
-      total_amount: parseFloat(values[i][3]),
-      paid_amount: parseFloat(values[i][4]),
-      due_amount: parseFloat(values[i][5]),
+      total_amount: parseSafeFloat(values[i][3]),
+      paid_amount: parseSafeFloat(values[i][4]),
+      due_amount: parseSafeFloat(values[i][5]),
       status: values[i][6]
     });
   }
@@ -789,12 +869,13 @@ function addExpense(data) {
   var mainSheet = ss.getSheetByName("Expenses");
   var expId = "EXP" + Date.now();
   var timestamp = new Date().toISOString();
+  var amtVal = parseSafeFloat(data.amount);
 
   var rowData = [
     expId,
     data.date,
     data.reason,
-    data.amount,
+    amtVal,
     data.category,
     data.payment_method,
     data.notes || "",
@@ -818,7 +899,19 @@ function addExpense(data) {
   // 4. Append row to daily sheet
   dailySheet.appendRow(rowData);
 
-  return { success: true };
+  return { 
+    success: true, 
+    data: {
+      expense_id: expId,
+      date: data.date,
+      reason: data.reason,
+      amount: amtVal,
+      category: data.category,
+      payment_method: data.payment_method,
+      notes: data.notes || "",
+      timestamp: timestamp
+    }
+  };
 }
 
 function getExpenses() {
@@ -831,7 +924,7 @@ function getExpenses() {
       expense_id: values[i][0],
       date: values[i][1],
       reason: values[i][2],
-      amount: parseFloat(values[i][3]),
+      amount: parseSafeFloat(values[i][3]),
       category: values[i][4],
       payment_method: values[i][5],
       notes: values[i][6]
@@ -868,36 +961,64 @@ function getMasterFinancialSummary() {
     var salesSheet = ssCust.getSheetByName("Sales");
     var salesVal = salesSheet.getDataRange().getValues();
     for (var i = 1; i < salesVal.length; i++) {
-      if (salesVal[i][2] === today) {
-        salesSum += parseFloat(salesVal[i][3] || 0);
+      var rowDate = salesVal[i][2];
+      if (rowDate) {
+        if (rowDate instanceof Date) {
+          rowDate = Utilities.formatDate(rowDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+        } else {
+          rowDate = String(rowDate).split('T')[0];
+        }
+        if (rowDate === today) {
+          salesSum += parseSafeFloat(salesVal[i][3]);
+        }
       }
     }
     
     var custSheet = ssCust.getSheetByName("Customers");
     var custVal = custSheet.getDataRange().getValues();
     for (var i = 1; i < custVal.length; i++) {
-      pendingDuesSum += parseFloat(custVal[i][5] || 0);
+      pendingDuesSum += parseSafeFloat(custVal[i][5]);
     }
   } catch(e) {}
 
   try {
     var ssCol = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
-    var colSheet = ssCol.getSheetByName("Milk_Collections");
-    var colVal = colSheet.getDataRange().getValues();
-    for (var i = 1; i < colVal.length; i++) {
-      if (colVal[i][2] === today) {
-        colPaidSum += parseFloat(colVal[i][9] || 0); // paid to farmers
+    var paySheet = ssCol.getSheetByName("Payments");
+    if (paySheet) {
+      var payVal = paySheet.getDataRange().getValues();
+      for (var i = 1; i < payVal.length; i++) {
+        var rowDate = payVal[i][3];
+        if (rowDate) {
+          if (rowDate instanceof Date) {
+            rowDate = Utilities.formatDate(rowDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+          } else {
+            rowDate = String(rowDate).split('T')[0];
+          }
+          if (rowDate === today) {
+            colPaidSum += parseSafeFloat(payVal[i][2]);
+          }
+        }
       }
     }
-  } catch(e) {}
+  } catch(e) {
+    logErrorToSheets("Error in getMasterFinancialSummary parsing Payments: " + e.toString());
+  }
 
   try {
     var ssExp = SpreadsheetApp.openById(CONFIG.EXPENSE_DB_ID);
     var expSheet = ssExp.getSheetByName("Expenses");
     var expVal = expSheet.getDataRange().getValues();
     for (var i = 1; i < expVal.length; i++) {
-      if (expVal[i][1] === today) {
-        opExpSum += parseFloat(expVal[i][3] || 0);
+      var rowDate = expVal[i][1];
+      if (rowDate) {
+        if (rowDate instanceof Date) {
+          rowDate = Utilities.formatDate(rowDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+        } else {
+          rowDate = String(rowDate).split('T')[0];
+        }
+        if (rowDate === today) {
+          opExpSum += parseSafeFloat(expVal[i][3]);
+        }
       }
     }
   } catch(e) {}
@@ -968,4 +1089,12 @@ function logErrorToSheets(msg) {
       sheet.appendRow([new Date().toISOString(), msg]);
     }
   } catch(e) {}
+}
+
+function parseSafeFloat(val) {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === 'number') return val;
+  var cleaned = String(val).replace(/[^0-9.]/g, '');
+  var num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
 }
