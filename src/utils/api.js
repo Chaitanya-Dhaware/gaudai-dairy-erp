@@ -365,10 +365,10 @@ export async function callAPI(action, payload = {}) {
     try {
       const res = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
-        mode: 'cors',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        redirect: 'follow',
+        // Using text/plain avoids the CORS preflight OPTIONS request
+        // that Google Apps Script cannot handle. GAS still receives valid JSON.
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, ...payload })
       });
 

@@ -2,17 +2,106 @@
  * Gaudai AI Dairy ERP - Google Apps Script Backend (Code.gs)
  * Deployed as Web App: Execute as "Me", Access: "Anyone"
  * Acts as the API layer between React frontend and 4 distinct Google Spreadsheets.
+ *
+ * FIRST-TIME SETUP (do ONE of these):
+ *   Option A – Run from editor: Call setupMaster() with your spreadsheet ID.
+ *              Edit line below and run it from Apps Script > Run > setupMaster
+ *   Option B – Visit the web app URL in a browser (doGet will bootstrap it).
  */
 
-// Global config - can also be loaded dynamically from Settings sheet
+// ─── FIRST-TIME: paste your Master Spreadsheet ID here, then run setupMaster() ───
+var MASTER_SHEET_ID_OVERRIDE = "1UJ3bGyH--6RiBPdBtDexfhxivebnqqPk0S1FIEQwJjU";
+
+// Global config populated at runtime via PropertiesService
 var CONFIG = {
-  COLLECTION_DB_ID: "", // Fill from settings sheet
-  CUSTOMER_DB_ID: "",   // Fill from settings sheet
-  EXPENSE_DB_ID: "",    // Fill from settings sheet
-  MASTER_DB_ID: "",     // Fill from settings sheet
-  WHATSAPP_TOKEN: "",   // Fill from settings sheet
-  WHATSAPP_PHONE_ID: "" // Fill from settings sheet
+  COLLECTION_DB_ID: "",
+  CUSTOMER_DB_ID: "",
+  EXPENSE_DB_ID: "",
+  MASTER_DB_ID: "",
+  WHATSAPP_TOKEN: "",
+  WHATSAPP_PHONE_ID: ""
 };
+
+/**
+ * Load CONFIG from script properties (persisted across calls).
+ * Falls back to MASTER_SHEET_ID_OVERRIDE if the property is not yet set.
+ */
+function loadConfigFromProperties() {
+  var props = PropertiesService.getScriptProperties();
+  CONFIG.MASTER_DB_ID      = props.getProperty("MASTER_DB_ID")      || MASTER_SHEET_ID_OVERRIDE || "";
+  CONFIG.COLLECTION_DB_ID  = props.getProperty("COLLECTION_DB_ID")  || "";
+  CONFIG.CUSTOMER_DB_ID    = props.getProperty("CUSTOMER_DB_ID")    || "";
+  CONFIG.EXPENSE_DB_ID     = props.getProperty("EXPENSE_DB_ID")     || "";
+  CONFIG.WHATSAPP_TOKEN    = props.getProperty("WHATSAPP_TOKEN")    || "";
+  CONFIG.WHATSAPP_PHONE_ID = props.getProperty("WHATSAPP_PHONE_ID") || "";
+}
+
+/**
+ * Persist CONFIG back to script properties.
+ */
+function saveConfigToProperties() {
+  var props = PropertiesService.getScriptProperties();
+  if (CONFIG.MASTER_DB_ID)     props.setProperty("MASTER_DB_ID",     CONFIG.MASTER_DB_ID);
+  if (CONFIG.COLLECTION_DB_ID) props.setProperty("COLLECTION_DB_ID", CONFIG.COLLECTION_DB_ID);
+  if (CONFIG.CUSTOMER_DB_ID)   props.setProperty("CUSTOMER_DB_ID",   CONFIG.CUSTOMER_DB_ID);
+  if (CONFIG.EXPENSE_DB_ID)    props.setProperty("EXPENSE_DB_ID",    CONFIG.EXPENSE_DB_ID);
+  if (CONFIG.WHATSAPP_TOKEN)   props.setProperty("WHATSAPP_TOKEN",   CONFIG.WHATSAPP_TOKEN);
+  if (CONFIG.WHATSAPP_PHONE_ID) props.setProperty("WHATSAPP_PHONE_ID", CONFIG.WHATSAPP_PHONE_ID);
+}
+
+/**
+ * ONE-TIME SETUP: Run this function from the Apps Script editor.
+ * It saves the Master Spreadsheet ID to script properties and
+ * auto-creates all sub-spreadsheets.
+ *
+ * How to use:
+ *   1. Open your Master Google Sheet, copy its ID from the URL
+ *      (the long string between /d/ and /edit)
+ *   2. Paste it into MASTER_SHEET_ID_OVERRIDE at the top of this file, OR
+ *      paste it as the argument below and run this function.
+ *   3. Click Run > setupMaster in the Apps Script editor.
+ */
+function setupMaster(masterIdArg) {
+  var masterId = masterIdArg || MASTER_SHEET_ID_OVERRIDE;
+  if (!masterId) {
+    throw new Error("Please paste your Master Spreadsheet ID into MASTER_SHEET_ID_OVERRIDE at the top of Code.gs, then run setupMaster() again.");
+  }
+  PropertiesService.getScriptProperties().setProperty("MASTER_DB_ID", masterId);
+  CONFIG.MASTER_DB_ID = masterId;
+  // Trigger full auto-setup
+  autoSetupSheets();
+  saveConfigToProperties();
+  Logger.log("✅ Setup complete! Master ID: " + masterId);
+  Logger.log("   Collection DB: " + CONFIG.COLLECTION_DB_ID);
+  Logger.log("   Customer DB:   " + CONFIG.CUSTOMER_DB_ID);
+  Logger.log("   Expense DB:    " + CONFIG.EXPENSE_DB_ID);
+}
+
+/**
+ * HTTP GET – called when you visit the web app URL in a browser.
+ * Bootstraps everything on first visit and returns a status page.
+ */
+function doGet(e) {
+  loadConfigFromProperties();
+  var masterId = (e && e.parameter && e.parameter.masterId) || CONFIG.MASTER_DB_ID;
+  if (masterId) {
+    CONFIG.MASTER_DB_ID = masterId;
+    autoSetupSheets();
+    saveConfigToProperties();
+  }
+  var html = "<h2>Gaudai AI Dairy ERP – Backend Status</h2>";
+  html += "<p><b>Master DB:</b> " + (CONFIG.MASTER_DB_ID || "❌ Not set") + "</p>";
+  html += "<p><b>Collection DB:</b> " + (CONFIG.COLLECTION_DB_ID || "❌ Not set") + "</p>";
+  html += "<p><b>Customer DB:</b> " + (CONFIG.CUSTOMER_DB_ID || "❌ Not set") + "</p>";
+  html += "<p><b>Expense DB:</b> " + (CONFIG.EXPENSE_DB_ID || "❌ Not set") + "</p>";
+  if (!CONFIG.MASTER_DB_ID) {
+    html += "<p style='color:red'>⚠️ To bootstrap, visit: <b>[this URL]?masterId=YOUR_SHEET_ID</b></p>";
+    html += "<p>Replace YOUR_SHEET_ID with the ID from your Master Google Sheet URL.</p>";
+  } else {
+    html += "<p style='color:green'>✅ Backend is configured and ready!</p>";
+  }
+  return HtmlService.createHtmlOutput(html);
+}
 
 /**
  * HTTP POST Entry Point
@@ -24,11 +113,23 @@ function doPost(e) {
     var requestData = JSON.parse(e.postData.contents);
     var action = requestData.action;
 
-    // Load sheets IDs and credentials from master settings if present
+    // 1. Load IDs from PropertiesService (fast, persisted)
+    loadConfigFromProperties();
+
+    // 2. If master still not known, check if request sent it (settings save)
+    if (!CONFIG.MASTER_DB_ID && requestData.sheetsIdMaster) {
+      CONFIG.MASTER_DB_ID = requestData.sheetsIdMaster;
+      saveConfigToProperties();
+    }
+
+    // 3. Sync remaining IDs from the Settings sheet row values
     loadSettingsFromSheets();
 
-    // Verify and initialize spreadsheets if they do not exist
+    // 4. Auto-create missing sub-spreadsheets
     autoSetupSheets();
+
+    // 5. Persist any newly created IDs
+    saveConfigToProperties();
 
     var result;
     switch (action) {
@@ -121,13 +222,21 @@ function doPost(e) {
  * Auto-create Spreadsheet Databases and sheets with correct headers if missing
  */
 function autoSetupSheets() {
-  // If master is not set, bind to the active spreadsheet
+  // Priority: already set > PropertiesService > MASTER_SHEET_ID_OVERRIDE > active spreadsheet
+  if (!CONFIG.MASTER_DB_ID) {
+    var props = PropertiesService.getScriptProperties();
+    CONFIG.MASTER_DB_ID = props.getProperty("MASTER_DB_ID") || MASTER_SHEET_ID_OVERRIDE || "";
+  }
   if (!CONFIG.MASTER_DB_ID) {
     try {
       CONFIG.MASTER_DB_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
     } catch(e) {
-      // Standalone script
+      // Standalone script — need explicit ID
     }
+  }
+  // Save whatever we found so future calls skip this step
+  if (CONFIG.MASTER_DB_ID) {
+    PropertiesService.getScriptProperties().setProperty("MASTER_DB_ID", CONFIG.MASTER_DB_ID);
   }
 
   if (CONFIG.MASTER_DB_ID) {
@@ -309,7 +418,11 @@ function getSettingsTable() {
 }
 
 function updateSettingsTable(requestData) {
-  var ss = SpreadsheetApp.openById(CONFIG.MASTER_DB_ID || requestData.sheetsIdMaster);
+  var masterId = CONFIG.MASTER_DB_ID || requestData.sheetsIdMaster;
+  if (!masterId) {
+    return { success: false, message: "Master sheet ID is missing. Please run setupMaster() from Apps Script editor first." };
+  }
+  var ss = SpreadsheetApp.openById(masterId);
   var sheet = ss.getSheetByName("Settings");
   if (!sheet) {
     createSheetIfMissing(ss, "Settings", ["key", "value"]);
@@ -322,6 +435,13 @@ function updateSettingsTable(requestData) {
   keys.forEach(function(k) {
     sheet.appendRow([k, requestData[k]]);
   });
+
+  // Also persist any sheet IDs the app sent us into PropertiesService
+  var props = PropertiesService.getScriptProperties();
+  if (requestData.sheetsIdMaster)     props.setProperty("MASTER_DB_ID",     requestData.sheetsIdMaster);
+  if (requestData.sheetsIdCollection) props.setProperty("COLLECTION_DB_ID", requestData.sheetsIdCollection);
+  if (requestData.sheetsIdCustomer)   props.setProperty("CUSTOMER_DB_ID",   requestData.sheetsIdCustomer);
+  if (requestData.sheetsIdExpense)    props.setProperty("EXPENSE_DB_ID",    requestData.sheetsIdExpense);
   
   return { success: true, message: "Settings saved successfully" };
 }

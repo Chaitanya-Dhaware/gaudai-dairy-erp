@@ -80,11 +80,10 @@ export function Login() {
           <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full bg-white/5 pointer-events-none" />
           <div className="absolute -left-16 -bottom-16 w-64 h-64 rounded-full bg-white/5 pointer-events-none" />
           
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1">
-              <img src="/src/assets/logo.svg" alt="Gaudai Logo" className="w-full h-full" />
+          <div className="flex items-center">
+            <div className="bg-white rounded-2xl px-5 py-3 shadow-lg">
+              <img src="/src/assets/gaudai-logo.png" alt="गौदाई" className="h-12 w-auto object-contain" />
             </div>
-            <h2 className="text-2xl font-bold font-head tracking-tight">Gaudai AI</h2>
           </div>
 
           <div className="my-12 space-y-4">

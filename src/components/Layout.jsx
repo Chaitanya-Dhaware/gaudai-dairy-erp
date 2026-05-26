@@ -4,11 +4,10 @@ import Sidebar from './Sidebar';
 import BottomBar from './BottomBar';
 import LanguageToggle from './LanguageToggle';
 import { Settings, LogOut, User } from 'lucide-react';
-import toast from 'react-hot-toast';
 
 export function Layout({ children }) {
   const { t } = useTranslation();
-  const { activeWorkspace, setWorkspace, user, setUser } = useAppStore();
+  const { activeWorkspace, setWorkspace, user, logout } = useAppStore();
 
   const getWorkspaceTitle = () => {
     switch (activeWorkspace) {
@@ -29,9 +28,8 @@ export function Layout({ children }) {
     }
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    toast.success('लॉगआउट यशस्वी / Logged out successfully');
+  const handleLogout = async () => {
+    await logout();
   };
 
   return (

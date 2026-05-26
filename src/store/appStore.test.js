@@ -32,7 +32,8 @@ vi.mock('firebase/auth', () => ({
     // Immediately invoke callback with mock user to trigger sync
     callback({ uid: 'test-user-id', email: 'admin@gaudai.com' });
     return () => {};
-  }
+  },
+  signOut: async () => {}
 }));
 
 vi.mock('firebase/firestore', () => ({

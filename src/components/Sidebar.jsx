@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
 import { LanguageToggle } from './LanguageToggle';
-import { toast } from 'react-hot-toast';
 import { 
   Home, 
   Droplet, 
@@ -14,7 +13,7 @@ import {
 
 export function Sidebar() {
   const { t } = useTranslation();
-  const { activeWorkspace, setWorkspace, user, setUser } = useAppStore();
+  const { activeWorkspace, setWorkspace, user, logout } = useAppStore();
 
   const navigation = [
     { id: 'dashboard', name: t('nav.collection').split(' ')[0] === 'संकलन' ? 'डॅशबोर्ड' : 'Dashboard', icon: Home },
@@ -24,21 +23,16 @@ export function Sidebar() {
     { id: 'accounts', name: t('nav.accounts'), icon: PieChart },
   ];
 
-  const handleLogout = () => {
-    setUser(null);
-    toast.success('लॉगआउट यशस्वी / Logged out successfully');
+  const handleLogout = async () => {
+    await logout();
   };
 
   return (
     <aside className="hidden lg:flex flex-col w-60 h-screen bg-white border-r border-black/[0.08] fixed left-0 top-0 z-30">
       {/* Brand Header */}
-      <div className="flex items-center space-x-3 px-6 py-6 border-b border-black/[0.08]">
-        <div className="w-9 h-9 flex-shrink-0 bg-primary rounded-lg overflow-hidden flex items-center justify-center p-1">
-          <img src="/src/assets/logo.svg" alt="Gaudai Logo" className="w-full h-full invert" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-primary font-head leading-none tracking-tight">Gaudai AI</h1>
-          <p className="text-[10px] text-textSecondary font-body tracking-wider uppercase mt-1">Smart Dairy ERP</p>
+      <div className="flex items-center space-x-3 px-5 py-5 border-b border-black/[0.08]">
+        <div className="w-28 flex-shrink-0">
+          <img src="/src/assets/gaudai-logo.png" alt="गौदाई" className="w-full h-auto object-contain" />
         </div>
       </div>
 

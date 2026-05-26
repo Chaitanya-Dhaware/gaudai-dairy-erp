@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { callAPI } from '../utils/api';
 import toast from 'react-hot-toast';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from '../utils/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -50,8 +50,24 @@ export const useAppStore = create((set, get) => ({
   loading: false,
 
   // Action methods
-  setUser: (user) => set({ user }),
+  setUser: (user) => {
+    if (user) {
+      localStorage.setItem('GAUDAI_USER_SESSION', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('GAUDAI_USER_SESSION');
+    }
+    set({ user });
+  },
   setLoadingAuth: (loadingAuth) => set({ loadingAuth }),
+  logout: async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error('Firebase signOut error:', e);
+    }
+    get().setUser(null);
+    toast.success('लॉगआउट यशस्वी / Logged out successfully');
+  },
   
   setWorkspace: (workspace) => {
     let tab = 'summary';
@@ -419,7 +435,19 @@ onAuthStateChanged(auth, async (firebaseUser) => {
       store.setLoadingAuth(false);
     }
   } else {
-    store.setUser(null);
+    const saved = localStorage.getItem('GAUDAI_USER_SESSION');
+    if (saved) {
+      try {
+        const savedUser = JSON.parse(saved);
+        store.setUser(savedUser);
+        await store.loadAllData();
+      } catch (e) {
+        console.error('Error restoring session from localStorage:', e);
+        store.setUser(null);
+      }
+    } else {
+      store.setUser(null);
+    }
     store.setLoadingAuth(false);
   }
 });

@@ -2,33 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Fonts Configuration */
+/* Fonts Configuration - Inter for clean, simple readability */
 .lang-en {
-  --font-head: 'Fraunces', serif;
-  --font-body: 'DM Sans', sans-serif;
+  --font-head: 'Inter', sans-serif;
+  --font-body: 'Inter', sans-serif;
 }
 
 .lang-mr {
-  --font-head: 'Tiro Devanagari Marathi', serif;
-  --font-body: 'Noto Sans Devanagari', sans-serif;
+  --font-head: 'Inter', 'Noto Sans Devanagari', sans-serif;
+  --font-body: 'Inter', 'Noto Sans Devanagari', sans-serif;
 }
 
 body {
   margin: 0;
   background-color: #F8F9FA;
   color: #1A1A1A;
-  font-family: var(--font-body), sans-serif;
+  font-family: 'Inter', 'Noto Sans Devanagari', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-head), serif;
+  font-family: 'Inter', 'Noto Sans Devanagari', sans-serif;
+  font-weight: 600;
 }
 
-/* Numeric custom font rule (Always use DM Mono for digits) */
+/* Numeric monospace font */
 .font-mono {
-  font-family: 'DM Mono', monospace !important;
+  font-family: 'Courier New', 'Courier', monospace !important;
 }
 
 /* Scrollbar styling */
