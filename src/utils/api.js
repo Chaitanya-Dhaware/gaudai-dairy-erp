@@ -1,6 +1,9 @@
 // API Connector for Google Apps Script Backend
 // If APPS_SCRIPT_URL is not set or contains "placeholder", falls back to LocalStorage Mock DB for instant demo capability.
 
+import { db } from './firebase';
+import { collection, doc, setDoc, updateDoc, deleteDoc, getDocs, getDoc } from 'firebase/firestore';
+
 const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || '';
 const IS_MOCK_MODE = !APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('placeholder');
 
@@ -76,33 +79,329 @@ initMockDB();
 const getMockData = (key) => JSON.parse(localStorage.getItem(key) || '[]');
 const setMockData = (key, data) => localStorage.setItem(key, JSON.stringify(data));
 
+// Sync successful write actions to Firestore backup
+async function syncWriteToFirestore(action, responseData, payload) {
+  if (!db || !responseData || !responseData.success) return;
+
+  try {
+    switch (action) {
+      case 'registerFarmer': {
+        const farmer = responseData.data;
+        if (farmer && farmer.farmer_id) {
+          await setDoc(doc(db, 'farmers', farmer.farmer_id), farmer);
+        }
+        break;
+      }
+      case 'addMilkCollection': {
+        const entry = responseData.data;
+        if (entry && entry.entry_id) {
+          await setDoc(doc(db, 'collections', entry.entry_id), entry);
+          // Also update the farmer's current_due in Firestore
+          const farmerRef = doc(db, 'farmers', entry.farmer_id);
+          const farmerSnap = await getDoc(farmerRef);
+          if (farmerSnap.exists()) {
+            const currentDue = (farmerSnap.data().current_due || 0) + entry.due_amount;
+            await updateDoc(farmerRef, { current_due: currentDue });
+          }
+        }
+        break;
+      }
+      case 'markFarmerPaid': {
+        const entryId = payload.entry_id || payload.entryId;
+        if (entryId) {
+          const entryRef = doc(db, 'collections', entryId);
+          const entrySnap = await getDoc(entryRef);
+          if (entrySnap.exists()) {
+            const entry = entrySnap.data();
+            const oldDue = entry.due_amount;
+            await updateDoc(entryRef, {
+              paid_amount: entry.paid_amount + oldDue,
+              due_amount: 0,
+              status: 'Paid'
+            });
+            // Update farmer
+            const farmerRef = doc(db, 'farmers', entry.farmer_id);
+            const farmerSnap = await getDoc(farmerRef);
+            if (farmerSnap.exists()) {
+              const currentDue = Math.max(0, (farmerSnap.data().current_due || 0) - oldDue);
+              await updateDoc(farmerRef, { current_due: currentDue });
+            }
+          }
+        }
+        break;
+      }
+      case 'addCustomer': {
+        const customer = responseData.data;
+        if (customer && customer.customer_id) {
+          await setDoc(doc(db, 'customers', customer.customer_id), customer);
+        }
+        break;
+      }
+      case 'addProduct': {
+        const product = responseData.data;
+        if (product && product.product_id) {
+          await setDoc(doc(db, 'products', product.product_id), product);
+        }
+        break;
+      }
+      case 'updateProduct': {
+        const productId = payload.product_id;
+        const updateData = payload.data;
+        if (productId && updateData) {
+          await setDoc(doc(db, 'products', productId), updateData, { merge: true });
+        }
+        break;
+      }
+      case 'addSale': {
+        const sale = responseData.data;
+        if (sale && sale.bill_id) {
+          await setDoc(doc(db, 'sales', sale.bill_id), sale);
+          // Update customer due
+          const customerRef = doc(db, 'customers', sale.customer_id);
+          const customerSnap = await getDoc(customerRef);
+          if (customerSnap.exists()) {
+            const currentDue = (customerSnap.data().current_due || 0) + sale.due_amount;
+            await updateDoc(customerRef, { current_due: currentDue });
+          }
+        }
+        break;
+      }
+      case 'recordPayment': {
+        const customerId = payload.customer_id;
+        const amt = parseFloat(payload.amount);
+        if (customerId && !isNaN(amt)) {
+          const customerRef = doc(db, 'customers', customerId);
+          const customerSnap = await getDoc(customerRef);
+          if (customerSnap.exists()) {
+            const currentDue = Math.max(0, (customerSnap.data().current_due || 0) - amt);
+            await updateDoc(customerRef, { current_due: currentDue });
+          }
+          // Also write payment sale record to Firestore
+          const paymentId = `PAY${Date.now()}`;
+          await setDoc(doc(db, 'sales', paymentId), {
+            bill_id: paymentId,
+            customer_id: customerId,
+            date: new Date().toISOString().split('T')[0],
+            items: [],
+            total_amount: 0,
+            paid_amount: amt,
+            due_amount: -amt,
+            status: 'Paid',
+            timestamp: new Date().toISOString(),
+            is_payment_record: true
+          });
+        }
+        break;
+      }
+      case 'addExpense': {
+        const expense = responseData.data;
+        if (expense && expense.expense_id) {
+          await setDoc(doc(db, 'expenses', expense.expense_id), expense);
+        }
+        break;
+      }
+      case 'deleteExpense': {
+        const expenseId = payload.expense_id;
+        if (expenseId) {
+          await deleteDoc(doc(db, 'expenses', expenseId));
+        }
+        break;
+      }
+      case 'updateSettings': {
+        await setDoc(doc(db, 'settings', 'general'), payload);
+        break;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to sync write to Firestore backup:', err);
+  }
+}
+
+// Fetch backups from Firestore when Apps Script fails
+async function readFromFirestore(action) {
+  if (!db) return { success: false, error: 'Database not initialized' };
+  try {
+    switch (action) {
+      case 'getFarmerList': {
+        const snap = await getDocs(collection(db, 'farmers'));
+        const list = snap.docs.map(d => d.data());
+        return { success: true, data: list };
+      }
+      case 'getProductList': {
+        const snap = await getDocs(collection(db, 'products'));
+        const list = snap.docs.map(d => d.data());
+        return { success: true, data: list };
+      }
+      case 'getCustomerList': {
+        const snap = await getDocs(collection(db, 'customers'));
+        const list = snap.docs.map(d => d.data());
+        return { success: true, data: list };
+      }
+      case 'getCollectionEntries': {
+        const snap = await getDocs(collection(db, 'collections'));
+        const list = snap.docs.map(d => d.data());
+        list.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+        return { success: true, data: list };
+      }
+      case 'getSalesHistory': {
+        const snap = await getDocs(collection(db, 'sales'));
+        const list = snap.docs.map(d => d.data());
+        list.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+        return { success: true, data: list };
+      }
+      case 'getExpenses': {
+        const snap = await getDocs(collection(db, 'expenses'));
+        const list = snap.docs.map(d => d.data());
+        list.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+        return { success: true, data: list };
+      }
+      case 'getSettings': {
+        const docSnap = await getDoc(doc(db, 'settings', 'general'));
+        if (docSnap.exists()) {
+          return { success: true, data: docSnap.data() };
+        }
+        return { success: false, message: 'Settings not found' };
+      }
+      case 'getMasterFinancialSummary': {
+        const collectionsSnap = await getDocs(collection(db, 'collections'));
+        const salesSnap = await getDocs(collection(db, 'sales'));
+        const expensesSnap = await getDocs(collection(db, 'expenses'));
+        const customersSnap = await getDocs(collection(db, 'customers'));
+
+        const collectionsList = collectionsSnap.docs.map(d => d.data());
+        const salesList = salesSnap.docs.map(d => d.data());
+        const expensesList = expensesSnap.docs.map(d => d.data());
+        const customersList = customersSnap.docs.map(d => d.data());
+
+        const today = new Date().toISOString().split('T')[0];
+
+        const revenueToday = salesList
+          .filter(s => s.date === today)
+          .reduce((sum, s) => sum + s.total_amount, 0);
+
+        const cashInToday = salesList
+          .filter(s => s.date === today)
+          .reduce((sum, s) => sum + s.paid_amount, 0);
+
+        const farmerPaymentsToday = collectionsList
+          .filter(c => c.date === today)
+          .reduce((sum, c) => sum + c.paid_amount, 0);
+
+        const opExpensesToday = expensesList
+          .filter(e => e.date === today)
+          .reduce((sum, e) => sum + e.amount, 0);
+
+        const totalPendingDues = customersList.reduce((sum, c) => sum + (c.current_due || 0), 0);
+
+        return {
+          success: true,
+          data: {
+            revenueToday,
+            cashInToday,
+            expensesToday: farmerPaymentsToday + opExpensesToday,
+            farmerPaymentsToday,
+            opExpensesToday,
+            pendingDues: totalPendingDues,
+            netProfit: revenueToday - (farmerPaymentsToday + opExpensesToday)
+          }
+        };
+      }
+      case 'getCashFlowStatement': {
+        const collectionsSnap = await getDocs(collection(db, 'collections'));
+        const salesSnap = await getDocs(collection(db, 'sales'));
+        const expensesSnap = await getDocs(collection(db, 'expenses'));
+
+        const collectionsList = collectionsSnap.docs.map(d => d.data());
+        const salesList = salesSnap.docs.map(d => d.data());
+        const expensesList = expensesSnap.docs.map(d => d.data());
+
+        const dates = new Set([
+          ...collectionsList.map(c => c.date),
+          ...salesList.map(s => s.date),
+          ...expensesList.map(e => e.date)
+        ]);
+
+        let cashFlows = [];
+        let balance = 100000;
+
+        Array.from(dates).sort().forEach(d => {
+          const cashIn = salesList.filter(s => s.date === d).reduce((sum, s) => sum + s.paid_amount, 0);
+          const cashOutFarmers = collectionsList.filter(c => c.date === d).reduce((sum, c) => sum + c.paid_amount, 0);
+          const cashOutOps = expensesList.filter(e => e.date === d).reduce((sum, e) => sum + e.amount, 0);
+          const cashOut = cashOutFarmers + cashOutOps;
+
+          const opening = balance;
+          balance = opening + cashIn - cashOut;
+
+          cashFlows.push({
+            date: d,
+            opening_balance: opening,
+            cash_in: cashIn,
+            cash_out: cashOut,
+            closing_balance: balance
+          });
+        });
+
+        return { success: true, data: cashFlows.reverse() };
+      }
+      default:
+        return { success: false, message: `Read action ${action} not supported` };
+    }
+  } catch (err) {
+    console.error(`Firestore backup read failed for action ${action}:`, err);
+    return { success: false, error: err.message };
+  }
+}
+
 // Core API caller
 export async function callAPI(action, payload = {}) {
+  let response;
+
   if (IS_MOCK_MODE) {
     initMockDB();
     await delay(600); // Simulate network speed
-    return handleMockAPI(action, payload);
-  }
+    response = handleMockAPI(action, payload);
+  } else {
+    try {
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action, ...payload })
+      });
 
-  try {
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      mode: 'cors',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ action, ...payload })
-    });
+      if (!res.ok) {
+        throw new Error(`Apps Script Error: ${res.statusText}`);
+      }
 
-    if (!res.ok) {
-      throw new Error(`Apps Script Error: ${res.statusText}`);
+      response = await res.json();
+    } catch (error) {
+      console.error('Apps Script Fetch Error, falling back to Firestore/Mock DB:', error);
+      // Fallback to Firestore read backup
+      if (action.startsWith('get') || action === 'getMasterFinancialSummary' || action === 'getCashFlowStatement') {
+        const firestoreResponse = await readFromFirestore(action);
+        if (firestoreResponse.success && firestoreResponse.data) {
+          if (action === 'getSettings' && !firestoreResponse.data.baseRate) {
+            // let it fallback
+          } else {
+            return firestoreResponse;
+          }
+        }
+      }
+      response = handleMockAPI(action, payload);
     }
-
-    return await res.json();
-  } catch (error) {
-    console.error('Apps Script Fetch Error, falling back to Local Mock DB:', error);
-    return handleMockAPI(action, payload);
   }
+
+  // Sync writes to Firestore backup
+  if (response && response.success) {
+    syncWriteToFirestore(action, response, payload).catch(err => {
+      console.error('Firestore async write backup failed:', err);
+    });
+  }
+
+  return response;
 }
 
 // Handler for all Workspace endpoints when offline/mocking
@@ -170,7 +469,7 @@ function handleMockAPI(action, payload) {
       collections = getMockData('GAUDAI_COLLECTIONS');
       farmers = getMockData('GAUDAI_FARMERS');
       
-      const collectionIndex = collections.findIndex(c => c.entry_id === payload.entry_id);
+      const collectionIndex = collections.findIndex(c => c.entry_id === (payload.entry_id || payload.entryId));
       if (collectionIndex !== -1) {
         const entry = collections[collectionIndex];
         const oldDue = entry.due_amount;

@@ -42,7 +42,11 @@ vi.mock('firebase/firestore', () => ({
     exists: () => true,
     data: () => ({ uid: 'test-user-id', name: 'Test Admin', role: 'admin', active: true })
   }),
-  setDoc: async () => {}
+  setDoc: async () => {},
+  collection: () => ({}),
+  getDocs: async () => ({ docs: [] }),
+  updateDoc: async () => {},
+  deleteDoc: async () => {}
 }));
 
 vi.mock('react-hot-toast', () => ({
