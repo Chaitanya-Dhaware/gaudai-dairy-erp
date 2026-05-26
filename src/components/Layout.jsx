@@ -1,4 +1,3 @@
-import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
 import Sidebar from './Sidebar';
@@ -8,7 +7,7 @@ import { Settings, LogOut, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function Layout({ children }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { activeWorkspace, setWorkspace, user, setUser } = useAppStore();
 
   const getWorkspaceTitle = () => {

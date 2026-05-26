@@ -5,7 +5,12 @@ const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || '';
 const IS_MOCK_MODE = !APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('placeholder');
 
 // Helper to simulate network latency
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const delay = (ms) => {
+  if (typeof globalThis.process !== 'undefined' && globalThis.process.env?.NODE_ENV === 'test') {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => setTimeout(resolve, ms));
+};
 
 // Mock Database Initializer
 const initMockDB = () => {
@@ -74,6 +79,7 @@ const setMockData = (key, data) => localStorage.setItem(key, JSON.stringify(data
 // Core API caller
 export async function callAPI(action, payload = {}) {
   if (IS_MOCK_MODE) {
+    initMockDB();
     await delay(600); // Simulate network speed
     return handleMockAPI(action, payload);
   }
@@ -105,7 +111,7 @@ function handleMockAPI(action, payload) {
 
   switch (action) {
     // --- COLLECTION MANAGEMENT ---
-    case 'registerFarmer':
+    case 'registerFarmer': {
       farmers = getMockData('GAUDAI_FARMERS');
       const nextFarmerId = `F-${farmers.length + 200}`;
       const newFarmer = {
@@ -120,11 +126,12 @@ function handleMockAPI(action, payload) {
       farmers.unshift(newFarmer);
       setMockData('GAUDAI_FARMERS', farmers);
       return { success: true, message: 'Farmer registered successfully', data: newFarmer };
+    }
 
     case 'getFarmerList':
       return { success: true, data: getMockData('GAUDAI_FARMERS') };
 
-    case 'addMilkCollection':
+    case 'addMilkCollection': {
       collections = getMockData('GAUDAI_COLLECTIONS');
       farmers = getMockData('GAUDAI_FARMERS');
       
@@ -154,11 +161,12 @@ function handleMockAPI(action, payload) {
         setMockData('GAUDAI_FARMERS', farmers);
       }
       return { success: true, message: 'Collection saved successfully', data: newCollection };
+    }
 
     case 'getCollectionEntries':
       return { success: true, data: getMockData('GAUDAI_COLLECTIONS') };
 
-    case 'markFarmerPaid':
+    case 'markFarmerPaid': {
       collections = getMockData('GAUDAI_COLLECTIONS');
       farmers = getMockData('GAUDAI_FARMERS');
       
@@ -180,9 +188,10 @@ function handleMockAPI(action, payload) {
         return { success: true, message: 'Payment recorded successfully' };
       }
       return { success: false, message: 'Collection entry not found' };
+    }
 
     // --- CUSTOMER MANAGEMENT ---
-    case 'addCustomer':
+    case 'addCustomer': {
       customers = getMockData('GAUDAI_CUSTOMERS');
       const nextCustId = `C${String(customers.length + 1).padStart(3, '0')}`;
       const newCustomer = {
@@ -197,6 +206,7 @@ function handleMockAPI(action, payload) {
       customers.unshift(newCustomer);
       setMockData('GAUDAI_CUSTOMERS', customers);
       return { success: true, data: newCustomer };
+    }
 
     case 'getCustomerList':
       return { success: true, data: getMockData('GAUDAI_CUSTOMERS') };
@@ -204,7 +214,7 @@ function handleMockAPI(action, payload) {
     case 'getProductList':
       return { success: true, data: getMockData('GAUDAI_PRODUCTS') };
 
-    case 'addProduct':
+    case 'addProduct': {
       products = getMockData('GAUDAI_PRODUCTS');
       const nextProdId = `P${String(products.length + 1).padStart(3, '0')}`;
       const newProduct = {
@@ -218,8 +228,9 @@ function handleMockAPI(action, payload) {
       products.push(newProduct);
       setMockData('GAUDAI_PRODUCTS', products);
       return { success: true, data: newProduct };
+    }
 
-    case 'updateProduct':
+    case 'updateProduct': {
       products = getMockData('GAUDAI_PRODUCTS');
       const prodIdx = products.findIndex(p => p.product_id === payload.product_id);
       if (prodIdx !== -1) {
@@ -228,8 +239,9 @@ function handleMockAPI(action, payload) {
         return { success: true, data: products[prodIdx] };
       }
       return { success: false, message: 'Product not found' };
+    }
 
-    case 'addSale':
+    case 'addSale': {
       sales = getMockData('GAUDAI_SALES');
       customers = getMockData('GAUDAI_CUSTOMERS');
 
@@ -255,8 +267,9 @@ function handleMockAPI(action, payload) {
         setMockData('GAUDAI_CUSTOMERS', customers);
       }
       return { success: true, data: newSale };
+    }
 
-    case 'recordPayment':
+    case 'recordPayment': {
       customers = getMockData('GAUDAI_CUSTOMERS');
       const cIdx = customers.findIndex(c => c.customer_id === payload.customer_id);
       if (cIdx !== -1) {
@@ -283,12 +296,13 @@ function handleMockAPI(action, payload) {
         return { success: true, current_due: customers[cIdx].current_due };
       }
       return { success: false, message: 'Customer not found' };
+    }
 
     case 'getSalesHistory':
       return { success: true, data: getMockData('GAUDAI_SALES') };
 
     // --- EXPENSE WORKSPACE ---
-    case 'addExpense':
+    case 'addExpense': {
       expenses = getMockData('GAUDAI_EXPENSES');
       const newExpense = {
         expense_id: `EXP${expenses.length + 100}`,
@@ -303,18 +317,20 @@ function handleMockAPI(action, payload) {
       expenses.unshift(newExpense);
       setMockData('GAUDAI_EXPENSES', expenses);
       return { success: true, data: newExpense };
+    }
 
     case 'getExpenses':
       return { success: true, data: getMockData('GAUDAI_EXPENSES') };
 
-    case 'deleteExpense':
+    case 'deleteExpense': {
       expenses = getMockData('GAUDAI_EXPENSES');
       const filteredExpenses = expenses.filter(e => e.expense_id !== payload.expense_id);
       setMockData('GAUDAI_EXPENSES', filteredExpenses);
       return { success: true, message: 'Expense deleted successfully' };
+    }
 
     // --- MASTER ACCOUNTS ---
-    case 'getMasterFinancialSummary':
+    case 'getMasterFinancialSummary': {
       collections = getMockData('GAUDAI_COLLECTIONS');
       sales = getMockData('GAUDAI_SALES');
       expenses = getMockData('GAUDAI_EXPENSES');
@@ -357,8 +373,9 @@ function handleMockAPI(action, payload) {
           netProfit: revenueToday - (farmerPaymentsToday + opExpensesToday)
         }
       };
+    }
 
-    case 'getCashFlowStatement':
+    case 'getCashFlowStatement': {
       collections = getMockData('GAUDAI_COLLECTIONS');
       sales = getMockData('GAUDAI_SALES');
       expenses = getMockData('GAUDAI_EXPENSES');
@@ -394,6 +411,7 @@ function handleMockAPI(action, payload) {
       });
 
       return { success: true, data: cashFlows.reverse() };
+    }
 
     case 'getSettings':
       settings = JSON.parse(localStorage.getItem('GAUDAI_SETTINGS')) || { baseRate: 8.5, businessName: 'Gaudai AI Dairy' };

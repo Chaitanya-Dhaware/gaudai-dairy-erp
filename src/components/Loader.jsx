@@ -1,4 +1,3 @@
-import React from 'react';
 
 // Card Skeleton Loader
 export function CardSkeleton({ count = 3 }) {

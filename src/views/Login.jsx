@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
 import LanguageToggle from '../components/LanguageToggle';
 import { toast } from 'react-hot-toast';
 import { Lock, Mail, ArrowRight, UserCheck } from 'lucide-react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../utils/firebase';
 
 export function Login() {

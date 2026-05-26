@@ -1,17 +1,16 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
-import { Settings as SettingsIcon, Database, MessageSquare, ShieldCheck, Download, Trash } from 'lucide-react';
+import { Database, MessageSquare, ShieldCheck, Download } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function Settings() {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const isMarathi = i18n.language === 'mr';
   const {
     settings,
     saveSettings,
     farmers,
-    products,
     customers,
     collections,
     sales,

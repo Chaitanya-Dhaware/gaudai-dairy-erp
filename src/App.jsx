@@ -1,4 +1,3 @@
-import React from 'react';
 import { useAppStore } from './store/appStore';
 import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';

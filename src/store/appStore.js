@@ -131,7 +131,7 @@ export const useAppStore = create((set, get) => ({
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       toast.error('तांत्रिक अडचण आली / Save error');
       return false;
     } finally {
@@ -172,7 +172,7 @@ export const useAppStore = create((set, get) => ({
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       toast.error('जतन करताना त्रुटी आली / Save error');
       return false;
     } finally {
@@ -197,7 +197,7 @@ export const useAppStore = create((set, get) => ({
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       toast.error('पेमेंट जतन झाले नाही / Payment error');
       return false;
     } finally {
@@ -217,7 +217,7 @@ export const useAppStore = create((set, get) => ({
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       toast.error('नोंदणी त्रुटी / Register error');
       return false;
     } finally {
@@ -236,7 +236,7 @@ export const useAppStore = create((set, get) => ({
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       toast.error('उत्पादन जतन करताना त्रुटी / Product save error');
       return false;
     } finally {
@@ -255,7 +255,7 @@ export const useAppStore = create((set, get) => ({
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       toast.error('दर बदल जतन झाला नाही / Price update error');
       return false;
     } finally {
@@ -280,7 +280,7 @@ export const useAppStore = create((set, get) => ({
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       toast.error('बिल जतन करण्यात अडचण / Bill save error');
       return false;
     } finally {
@@ -305,7 +305,7 @@ export const useAppStore = create((set, get) => ({
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       toast.error('त्रुटी आली / Payment error');
       return false;
     } finally {
@@ -329,7 +329,7 @@ export const useAppStore = create((set, get) => ({
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       toast.error('खर्च जतन करताना त्रुटी / Expense save error');
       return false;
     } finally {
@@ -352,7 +352,7 @@ export const useAppStore = create((set, get) => ({
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       toast.error('खर्च हटवण्यास अडचण / Delete error');
       return false;
     } finally {
@@ -371,7 +371,7 @@ export const useAppStore = create((set, get) => ({
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       toast.error('सेटिंग्ज जतन करता आल्या नाहीत / Settings error');
       return false;
     } finally {

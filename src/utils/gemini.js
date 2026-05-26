@@ -47,7 +47,7 @@ export async function generateContent(prompt) {
  * @param {string} lang - Language ('mr' or 'en')
  */
 export async function suggestExpenseCategory(reason, lang = 'mr') {
-  let prompt = '';
+  let prompt;
   if (lang === 'mr') {
     prompt = `हा डेअरी व्यवसायाचा खर्च खालीलपैकी एका वर्गात ठेवा:
 इंधन, पगार, पॅकेजिंग, वीज, वाहतूक, देखभाल, साहित्य, मार्केटिंग, इतर
@@ -79,7 +79,7 @@ Reply with only the category word.`;
  * @param {string} lang - Language ('mr' or 'en')
  */
 export async function generateBusinessInsights(financialData, lang = 'mr') {
-  let prompt = '';
+  let prompt;
   const dataStr = JSON.stringify(financialData, null, 2);
 
   if (lang === 'mr') {

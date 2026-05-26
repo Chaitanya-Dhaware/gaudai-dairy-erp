@@ -1,7 +1,7 @@
-import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
 import { Droplet, Users, Receipt, PieChart, TrendingUp, TrendingDown, Clock, ShieldCheck } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 export function HomeDashboard() {
   const { t, i18n } = useTranslation();
