@@ -223,8 +223,16 @@ async function writeToFirestore(action, payload) {
   try {
     switch (action) {
       case 'registerFarmer': {
-        const countSnap = await getDocs(collection(db, 'farmers'));
-        const farmerId = `F-${countSnap.size + 201}`;
+        const snap = await getDocs(collection(db, 'farmers'));
+        let maxId = 200;
+        snap.forEach(docSnap => {
+          const fid = docSnap.data().farmer_id;
+          if (fid) {
+            const num = parseInt(fid.replace(/\D/g, ''), 10);
+            if (!isNaN(num) && num > maxId) maxId = num;
+          }
+        });
+        const farmerId = `F-${maxId + 1}`;
         const newFarmer = {
           farmer_id: farmerId,
           name: payload.name,
@@ -238,8 +246,16 @@ async function writeToFirestore(action, payload) {
         return { success: true, message: 'Farmer registered successfully', data: newFarmer };
       }
       case 'addCustomer': {
-        const countSnap = await getDocs(collection(db, 'customers'));
-        const customerId = `C${String(countSnap.size + 201).padStart(3, '0')}`;
+        const snap = await getDocs(collection(db, 'customers'));
+        let maxId = 3;
+        snap.forEach(docSnap => {
+          const cid = docSnap.data().customer_id;
+          if (cid) {
+            const num = parseInt(cid.replace(/\D/g, ''), 10);
+            if (!isNaN(num) && num > maxId) maxId = num;
+          }
+        });
+        const customerId = `C${String(maxId + 1).padStart(3, '0')}`;
         const newCustomer = {
           customer_id: customerId,
           shop_name: payload.shop_name,
@@ -253,8 +269,16 @@ async function writeToFirestore(action, payload) {
         return { success: true, message: 'Customer added successfully', data: newCustomer };
       }
       case 'addProduct': {
-        const countSnap = await getDocs(collection(db, 'products'));
-        const productId = `P${String(countSnap.size + 101).padStart(3, '0')}`;
+        const snap = await getDocs(collection(db, 'products'));
+        let maxId = 6;
+        snap.forEach(docSnap => {
+          const pid = docSnap.data().product_id;
+          if (pid) {
+            const num = parseInt(pid.replace(/\D/g, ''), 10);
+            if (!isNaN(num) && num > maxId) maxId = num;
+          }
+        });
+        const productId = `P${String(maxId + 1).padStart(3, '0')}`;
         const newProduct = {
           product_id: productId,
           product_name: payload.product_name,
@@ -501,7 +525,14 @@ function handleMockAPI(action, payload) {
     // --- COLLECTION MANAGEMENT ---
     case 'registerFarmer': {
       farmers = getMockData('GAUDAI_FARMERS');
-      const nextFarmerId = `F-${farmers.length + 200}`;
+      let maxId = 200;
+      farmers.forEach(f => {
+        if (f.farmer_id) {
+          const num = parseInt(f.farmer_id.replace(/\D/g, ''), 10);
+          if (!isNaN(num) && num > maxId) maxId = num;
+        }
+      });
+      const nextFarmerId = `F-${maxId + 1}`;
       const newFarmer = {
         farmer_id: nextFarmerId,
         name: payload.name,
@@ -581,7 +612,14 @@ function handleMockAPI(action, payload) {
     // --- CUSTOMER MANAGEMENT ---
     case 'addCustomer': {
       customers = getMockData('GAUDAI_CUSTOMERS');
-      const nextCustId = `C${String(customers.length + 1).padStart(3, '0')}`;
+      let maxId = 3;
+      customers.forEach(c => {
+        if (c.customer_id) {
+          const num = parseInt(c.customer_id.replace(/\D/g, ''), 10);
+          if (!isNaN(num) && num > maxId) maxId = num;
+        }
+      });
+      const nextCustId = `C${String(maxId + 1).padStart(3, '0')}`;
       const newCustomer = {
         customer_id: nextCustId,
         shop_name: payload.shop_name,
@@ -604,7 +642,14 @@ function handleMockAPI(action, payload) {
 
     case 'addProduct': {
       products = getMockData('GAUDAI_PRODUCTS');
-      const nextProdId = `P${String(products.length + 1).padStart(3, '0')}`;
+      let maxId = 6;
+      products.forEach(p => {
+        if (p.product_id) {
+          const num = parseInt(p.product_id.replace(/\D/g, ''), 10);
+          if (!isNaN(num) && num > maxId) maxId = num;
+        }
+      });
+      const nextProdId = `P${String(maxId + 1).padStart(3, '0')}`;
       const newProduct = {
         product_id: nextProdId,
         product_name: payload.product_name,
