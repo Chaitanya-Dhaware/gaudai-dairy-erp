@@ -151,6 +151,9 @@ function doPost(e) {
       case 'batchLoadData':
         result = batchLoadData();
         break;
+      case 'importBackupData':
+        result = importBackupData(requestData);
+        break;
 
       // --- COLLECTION DB ACTIONS ---
       case 'registerFarmer':
@@ -1237,4 +1240,159 @@ function batchLoadData() {
       cashFlow: cashFlow
     }
   };
+}
+
+function importBackupData(data) {
+  // 1. Farmers & Collections (Collection DB)
+  try {
+    var ssCol = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+    if (data.farmers && data.farmers.length > 0) {
+      var sheet = ssCol.getSheetByName("Farmers");
+      if (sheet) {
+        var existingIds = sheet.getDataRange().getValues().map(function(r) { return r[0]; });
+        data.farmers.forEach(function(f) {
+          if (f.farmer_id && existingIds.indexOf(f.farmer_id) === -1) {
+            sheet.appendRow([
+              f.farmer_id,
+              f.name || "",
+              f.mobile || "",
+              f.address || "",
+              f.milk_type || "Cow",
+              parseSafeFloat(f.current_due),
+              f.created_at || new Date().toISOString()
+            ]);
+            existingIds.push(f.farmer_id);
+          }
+        });
+      }
+    }
+    
+    if (data.collections && data.collections.length > 0) {
+      var sheet = ssCol.getSheetByName("Milk_Collections");
+      if (sheet) {
+        var existingIds = sheet.getDataRange().getValues().map(function(r) { return r[0]; });
+        data.collections.forEach(function(c) {
+          if (c.entry_id && existingIds.indexOf(c.entry_id) === -1) {
+            sheet.appendRow([
+              c.entry_id,
+              c.farmer_id || "",
+              c.date || "",
+              c.milk_type || "Cow",
+              parseSafeFloat(c.quantity),
+              parseSafeFloat(c.fat),
+              parseSafeFloat(c.snf) || 8.5,
+              parseSafeFloat(c.calculated_rate),
+              parseSafeFloat(c.total_amount),
+              parseSafeFloat(c.paid_amount),
+              parseSafeFloat(c.due_amount),
+              c.status || "Pending",
+              c.timestamp || new Date().toISOString()
+            ]);
+            existingIds.push(c.entry_id);
+          }
+        });
+      }
+    }
+  } catch(e) {
+    logErrorToSheets("importBackupData Collection DB error: " + e.toString());
+  }
+
+  // 2. Customers, Products & Sales (Customer DB)
+  try {
+    var ssCust = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
+    if (data.customers && data.customers.length > 0) {
+      var sheet = ssCust.getSheetByName("Customers");
+      if (sheet) {
+        var existingIds = sheet.getDataRange().getValues().map(function(r) { return r[0]; });
+        data.customers.forEach(function(cust) {
+          if (cust.customer_id && existingIds.indexOf(cust.customer_id) === -1) {
+            sheet.appendRow([
+              cust.customer_id,
+              cust.shop_name || "",
+              cust.owner_name || "",
+              cust.mobile || "",
+              cust.address || "",
+              parseSafeFloat(cust.current_due),
+              cust.created_at || new Date().toISOString()
+            ]);
+            existingIds.push(cust.customer_id);
+          }
+        });
+      }
+    }
+    
+    if (data.products && data.products.length > 0) {
+      var sheet = ssCust.getSheetByName("Products");
+      if (sheet) {
+        var existingIds = sheet.getDataRange().getValues().map(function(r) { return r[0]; });
+        data.products.forEach(function(p) {
+          if (p.product_id && existingIds.indexOf(p.product_id) === -1) {
+            sheet.appendRow([
+              p.product_id,
+              p.product_name || "",
+              p.category || "Other",
+              parseSafeFloat(p.unit_price),
+              p.status || "Active",
+              p.updated_at || new Date().toISOString()
+            ]);
+            existingIds.push(p.product_id);
+          }
+        });
+      }
+    }
+
+    if (data.sales && data.sales.length > 0) {
+      var sheet = ssCust.getSheetByName("Sales");
+      if (sheet) {
+        var existingIds = sheet.getDataRange().getValues().map(function(r) { return r[0]; });
+        data.sales.forEach(function(s) {
+          if (s.bill_id && existingIds.indexOf(s.bill_id) === -1) {
+            sheet.appendRow([
+              s.bill_id,
+              s.customer_id || "",
+              s.date || "",
+              parseSafeFloat(s.total_amount),
+              parseSafeFloat(s.paid_amount),
+              parseSafeFloat(s.due_amount),
+              s.status || "Pending",
+              s.timestamp || new Date().toISOString()
+            ]);
+            existingIds.push(s.bill_id);
+          }
+        });
+      }
+    }
+  } catch(e) {
+    logErrorToSheets("importBackupData Customer DB error: " + e.toString());
+  }
+
+  // 3. Expenses (Expense DB)
+  try {
+    var ssExp = SpreadsheetApp.openById(CONFIG.EXPENSE_DB_ID);
+    if (data.expenses && data.expenses.length > 0) {
+      var sheet = ssExp.getSheetByName("Expenses");
+      if (sheet) {
+        var existingIds = sheet.getDataRange().getValues().map(function(r) { return r[0]; });
+        data.expenses.forEach(function(exp) {
+          if (exp.expense_id && existingIds.indexOf(exp.expense_id) === -1) {
+            sheet.appendRow([
+              exp.expense_id,
+              exp.date || "",
+              exp.reason || "",
+              parseSafeFloat(exp.amount),
+              exp.category || "Other",
+              exp.payment_method || "Cash",
+              exp.notes || "",
+              exp.timestamp || new Date().toISOString()
+            ]);
+            existingIds.push(exp.expense_id);
+          }
+        });
+      }
+    }
+  } catch(e) {
+    logErrorToSheets("importBackupData Expense DB error: " + e.toString());
+  }
+
+  return { success: true, message: "Backup data synchronized successfully" };
 }

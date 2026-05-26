@@ -315,7 +315,7 @@ async function writeToFirestore(action, payload) {
 }
 
 // Fetch backups from Firestore when Apps Script fails
-async function readFromFirestore(action) {
+export async function readFromFirestore(action) {
   if (!db) return { success: false, error: 'Database not initialized' };
   try {
     switch (action) {
@@ -539,6 +539,9 @@ function handleMockAPI(action, payload) {
           cashFlow: handleMockAPI('getCashFlowStatement', payload).data
         }
       };
+    }
+    case 'importBackupData': {
+      return { success: true, message: 'Mock backup imported successfully' };
     }
     // --- COLLECTION MANAGEMENT ---
     case 'registerFarmer': {

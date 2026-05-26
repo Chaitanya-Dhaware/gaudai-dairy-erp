@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { callAPI } from '../utils/api';
+import { callAPI, readFromFirestore } from '../utils/api';
 import toast from 'react-hot-toast';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from '../utils/firebase';
@@ -101,6 +101,70 @@ export const useAppStore = create((set, get) => ({
 
       if (batchRes && batchRes.success && batchRes.data) {
         const d = batchRes.data;
+
+        // Check Firestore backup to detect if Sheets is out of sync/empty
+        const [backupFarmers, backupCollections, backupCustomers, backupProducts, backupSales, backupExpenses] = await Promise.all([
+          readFromFirestore('getFarmerList'),
+          readFromFirestore('getCollectionEntries'),
+          readFromFirestore('getCustomerList'),
+          readFromFirestore('getProductList'),
+          readFromFirestore('getSalesHistory'),
+          readFromFirestore('getExpenses')
+        ]).catch(() => [null, null, null, null, null, null]);
+
+        const hasFirestoreData = 
+          (backupFarmers && backupFarmers.success && backupFarmers.data.length > 0) ||
+          (backupCollections && backupCollections.success && backupCollections.data.length > 0) ||
+          (backupCustomers && backupCustomers.success && backupCustomers.data.length > 0) ||
+          (backupSales && backupSales.success && backupSales.data.length > 0) ||
+          (backupExpenses && backupExpenses.success && backupExpenses.data.length > 0);
+
+        const hasSheetsData = 
+          (d.farmers && d.farmers.length > 0) ||
+          (d.collections && d.collections.length > 0) ||
+          (d.sales && d.sales.length > 0) ||
+          (d.expenses && d.expenses.length > 0);
+
+        if (hasFirestoreData && !hasSheetsData) {
+          const isMarathi = localStorage.getItem('i18nextLng') === 'mr';
+          toast.loading(isMarathi ? 'डेटा गुगल शीटमध्ये सिंक करत आहे...' : 'Syncing backup data to Google Sheets...');
+          await callAPI('importBackupData', {
+            farmers: backupFarmers && backupFarmers.success ? backupFarmers.data : [],
+            collections: backupCollections && backupCollections.success ? backupCollections.data : [],
+            customers: backupCustomers && backupCustomers.success ? backupCustomers.data : [],
+            products: backupProducts && backupProducts.success ? backupProducts.data : [],
+            sales: backupSales && backupSales.success ? backupSales.data : [],
+            expenses: backupExpenses && backupExpenses.success ? backupExpenses.data : [],
+            sheetsIdCollection: settings.sheetsIdCollection,
+            sheetsIdCustomer: settings.sheetsIdCustomer,
+            sheetsIdExpense: settings.sheetsIdExpense
+          });
+          toast.dismiss();
+          toast.success(isMarathi ? 'गुगल शीट सिंक यशस्वी!' : 'Google Sheets sync completed!');
+          
+          // Re-fetch optimized batch data
+          const reBatchRes = await callAPI('batchLoadData', {
+            sheetsIdCollection: settings.sheetsIdCollection,
+            sheetsIdCustomer: settings.sheetsIdCustomer,
+            sheetsIdExpense: settings.sheetsIdExpense,
+            sheetsIdMaster: settings.sheetsIdMaster
+          });
+          if (reBatchRes && reBatchRes.success && reBatchRes.data) {
+            const rd = reBatchRes.data;
+            set({
+              farmers: rd.farmers || [],
+              products: rd.products || [],
+              customers: rd.customers || [],
+              collections: rd.collections || [],
+              sales: rd.sales || [],
+              expenses: rd.expenses || [],
+              todaySummary: rd.summary || get().todaySummary,
+              cashFlow: rd.cashFlow || []
+            });
+            return;
+          }
+        }
+
         set({
           farmers: d.farmers || [],
           products: d.products || [],
