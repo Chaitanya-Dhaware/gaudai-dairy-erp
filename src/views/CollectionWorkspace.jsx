@@ -528,11 +528,17 @@ function PaymentTracking({
   formatDate
 }) {
   const [filterStatus, setFilterStatus] = useState('All');
+  const [searchName, setSearchName] = useState('');
   const [modalEntry, setModalEntry] = useState(null);
+  const [clearAmount, setClearAmount] = useState('');
 
   const filteredCols = collections.filter(c => {
-    if (filterStatus === 'All') return true;
-    return c.status === filterStatus;
+    const statusMatch = filterStatus === 'All' || c.status === filterStatus;
+    const farmer = farmers.find(f => f.farmer_id === c.farmer_id);
+    const farmerName = farmer?.name || '';
+    const nameMatch = farmerName.toLowerCase().includes(searchName.toLowerCase()) || 
+                      c.farmer_id.toLowerCase().includes(searchName.toLowerCase());
+    return statusMatch && nameMatch;
   });
 
   // Summary calculations
@@ -542,9 +548,15 @@ function PaymentTracking({
 
   const handleConfirmPayment = async () => {
     if (!modalEntry) return;
-    const success = await markFarmerPaid(modalEntry.entry_id);
+    const amtVal = parseFloat(clearAmount);
+    if (isNaN(amtVal) || amtVal <= 0 || amtVal > modalEntry.due_amount) {
+      toast.error(isMarathi ? 'कृपया वैध रक्कम प्रविष्ट करा' : 'Please enter a valid amount');
+      return;
+    }
+    const success = await markFarmerPaid(modalEntry.entry_id, amtVal);
     if (success) {
       setModalEntry(null);
+      setClearAmount('');
     }
   };
 
@@ -574,20 +586,32 @@ function PaymentTracking({
 
       {/* Ledger view */}
       <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-subtle space-y-4">
-        <div className="flex justify-between items-center border-b border-black/[0.04] pb-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-black/[0.04] pb-4">
           <h4 className="text-sm font-bold text-textPrimary uppercase tracking-wider">
             {t('collection.payments')}
           </h4>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-2.5 py-1 border border-black/[0.08] rounded-lg text-xs bg-background focus:outline-none"
-          >
-            <option value="All">{isMarathi ? 'सर्व स्थिती' : 'All Statuses'}</option>
-            <option value="Paid">{t('status.paid')}</option>
-            <option value="Partial">{t('status.partial')}</option>
-            <option value="Pending">{t('status.pending')}</option>
-          </select>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <div className="relative w-full sm:w-48">
+              <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-textSecondary" />
+              <input
+                type="text"
+                value={searchName}
+                onChange={(e) => setSearchName(e.target.value)}
+                placeholder={isMarathi ? 'नाव किंवा क्रमांक शोधा' : 'Search name or ID'}
+                className="w-full pl-8 pr-3 py-1 border border-black/[0.08] rounded-lg text-xs bg-background focus:outline-none focus:border-primary"
+              />
+            </div>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-2.5 py-1 border border-black/[0.08] rounded-lg text-xs bg-background focus:outline-none cursor-pointer"
+            >
+              <option value="All">{isMarathi ? 'सर्व स्थिती' : 'All Statuses'}</option>
+              <option value="Paid">{t('status.paid')}</option>
+              <option value="Partial">{t('status.partial')}</option>
+              <option value="Pending">{t('status.pending')}</option>
+            </select>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -636,7 +660,10 @@ function PaymentTracking({
                     <td className="py-3 px-4">
                       {c.due_amount > 0 ? (
                         <button
-                          onClick={() => setModalEntry(c)}
+                          onClick={() => {
+                            setModalEntry(c);
+                            setClearAmount(c.due_amount.toString());
+                          }}
                           className="px-2.5 py-1 bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 text-[10px] font-bold rounded-md transition-all cursor-pointer"
                         >
                           {t('btn.markPaid')}
@@ -663,28 +690,57 @@ function PaymentTracking({
       {/* Payment Confirmation Modal */}
       {modalEntry && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full border border-black/[0.08] shadow-2xl space-y-6">
-            <div className="flex items-center space-x-3 text-accent">
-              <ShieldAlert className="w-8 h-8" />
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full border border-black/[0.08] shadow-2xl space-y-5">
+            <div className="flex items-center space-x-3 text-primary">
+              <IndianRupee className="w-6 h-6" />
               <h3 className="text-base font-bold font-head text-textPrimary">
-                {isMarathi ? 'भरणा निश्चित करा' : 'Confirm Payment'}
+                {isMarathi ? 'भरणा नोंदवा' : 'Record Due Clearance'}
               </h3>
             </div>
-            <p className="text-xs text-textSecondary leading-relaxed">
-              {isMarathi 
-                ? `आपण शेतकरी "${farmers.find(f => f.farmer_id === modalEntry.farmer_id)?.name}" यांना प्रलंबित बाकी रक्कम ${formatCurrency(modalEntry.due_amount)} पूर्ण भरली असल्याचे जाहीर करत आहात का?`
-                : `Confirm full clearance of outstanding ₹${modalEntry.due_amount} to farmer "${farmers.find(f => f.farmer_id === modalEntry.farmer_id)?.name}"?`}
-            </p>
-            <div className="flex space-x-3 justify-end text-xs">
+            
+            <div className="text-xs text-textSecondary space-y-1">
+              <p>
+                {isMarathi 
+                  ? `शेतकरी: ${farmers.find(f => f.farmer_id === modalEntry.farmer_id)?.name} (${modalEntry.farmer_id})`
+                  : `Farmer: ${farmers.find(f => f.farmer_id === modalEntry.farmer_id)?.name} (${modalEntry.farmer_id})`}
+              </p>
+              <p>
+                {isMarathi 
+                  ? `एकूण प्रलंबित बाकी: ${formatCurrency(modalEntry.due_amount)}`
+                  : `Total Pending Due: ${formatCurrency(modalEntry.due_amount)}`}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-[11px] font-bold text-textSecondary uppercase">
+                {isMarathi ? 'जमा करायची रक्कम (₹)' : 'Amount to Clear (₹)'}
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                max={modalEntry.due_amount}
+                step="any"
+                value={clearAmount}
+                onChange={(e) => setClearAmount(e.target.value)}
+                className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary font-mono font-semibold"
+                placeholder={isMarathi ? 'रक्कम प्रविष्ट करा' : 'Enter amount'}
+                required
+              />
+            </div>
+
+            <div className="flex space-x-3 justify-end text-xs pt-2">
               <button
-                onClick={() => setModalEntry(null)}
-                className="px-4 py-2 border border-black/[0.08] rounded-xl font-semibold text-textSecondary hover:bg-black/[0.02]"
+                onClick={() => {
+                  setModalEntry(null);
+                  setClearAmount('');
+                }}
+                className="px-4 py-2 border border-black/[0.08] rounded-xl font-semibold text-textSecondary hover:bg-black/[0.02] cursor-pointer"
               >
                 {t('btn.cancel')}
               </button>
               <button
                 onClick={handleConfirmPayment}
-                className="px-4 py-2 bg-primary hover:bg-primary-light text-white rounded-xl font-semibold"
+                className="px-4 py-2 bg-primary hover:bg-primary-light text-white rounded-xl font-semibold cursor-pointer"
               >
                 {isMarathi ? 'निश्चित करा' : 'Confirm'}
               </button>

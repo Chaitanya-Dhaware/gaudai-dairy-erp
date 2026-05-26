@@ -153,7 +153,7 @@ function doPost(e) {
         result = getCollectionEntries();
         break;
       case 'markFarmerPaid':
-        result = markFarmerPaid(requestData.entryId);
+        result = markFarmerPaid(requestData.entryId, requestData.amount);
         break;
 
       // --- CUSTOMER DB ACTIONS ---
@@ -619,7 +619,7 @@ function getCollectionEntries() {
   return { success: true, data: list };
 }
 
-function markFarmerPaid(entryId) {
+function markFarmerPaid(entryId, amountCleared) {
   var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
   var colSheet = ss.getSheetByName("Milk_Collections");
   var colData = colSheet.getDataRange().getValues();
@@ -629,18 +629,26 @@ function markFarmerPaid(entryId) {
       var farmerId = colData[i][1];
       var due = parseSafeFloat(colData[i][10]);
       var currentPaid = parseSafeFloat(colData[i][9]);
-      var paid = currentPaid + due;
+      
+      var amtVal = amountCleared !== undefined && amountCleared !== null ? parseSafeFloat(amountCleared) : due;
+      if (amtVal > due) {
+        amtVal = due;
+      }
+      
+      var paid = currentPaid + amtVal;
+      var remainingDue = Math.max(0, due - amtVal);
+      var status = remainingDue <= 0 ? "Paid" : "Partial";
       
       colSheet.getRange(i + 1, 10).setValue(paid); // update paid
-      colSheet.getRange(i + 1, 11).setValue(0);    // clear due
-      colSheet.getRange(i + 1, 12).setValue("Paid"); // status
+      colSheet.getRange(i + 1, 11).setValue(remainingDue);    // update due
+      colSheet.getRange(i + 1, 12).setValue(status); // status
       
       // Update farmer
       var farmSheet = ss.getSheetByName("Farmers");
       var farmData = farmSheet.getDataRange().getValues();
       for (var j = 1; j < farmData.length; j++) {
         if (farmData[j][0] === farmerId) {
-          var newDue = Math.max(0, parseSafeFloat(farmData[j][5]) - due);
+          var newDue = Math.max(0, parseSafeFloat(farmData[j][5]) - amtVal);
           farmSheet.getRange(j + 1, 6).setValue(newDue);
           break;
         }
@@ -653,7 +661,7 @@ function markFarmerPaid(entryId) {
           paySheet.appendRow([
             "PAY-" + Date.now(),
             farmerId,
-            due,
+            amtVal,
             new Date().toISOString().split('T')[0],
             "Cleared due for collection entry " + entryId,
             new Date().toISOString()

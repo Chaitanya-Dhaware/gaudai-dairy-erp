@@ -227,11 +227,11 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
-  markFarmerPaid: async (entryId) => {
+  markFarmerPaid: async (entryId, amount) => {
     set({ loading: true });
     try {
       const settings = get().settings;
-      const res = await callAPI('markFarmerPaid', { entryId, sheetsIdCollection: settings.sheetsIdCollection });
+      const res = await callAPI('markFarmerPaid', { entryId, amount, sheetsIdCollection: settings.sheetsIdCollection });
       if (res.success) {
         toast.success('पेमेंट यशस्वी / Payment marked paid!');
         const [updatedCol, updatedFar, updatedSum] = await Promise.all([

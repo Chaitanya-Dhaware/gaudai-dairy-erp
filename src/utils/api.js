@@ -108,22 +108,25 @@ async function syncWriteToFirestore(action, responseData, payload) {
       }
       case 'markFarmerPaid': {
         const entryId = payload.entry_id || payload.entryId;
-        if (entryId) {
+        const amtCleared = parseFloat(payload.amount);
+        if (entryId && !isNaN(amtCleared)) {
           const entryRef = doc(db, 'collections', entryId);
           const entrySnap = await getDoc(entryRef);
           if (entrySnap.exists()) {
             const entry = entrySnap.data();
-            const oldDue = entry.due_amount;
+            const oldDue = entry.due_amount || 0;
+            const finalAmt = Math.min(oldDue, amtCleared);
+            const remainingDue = Math.max(0, oldDue - finalAmt);
             await updateDoc(entryRef, {
-              paid_amount: entry.paid_amount + oldDue,
-              due_amount: 0,
-              status: 'Paid'
+              paid_amount: (entry.paid_amount || 0) + finalAmt,
+              due_amount: remainingDue,
+              status: remainingDue <= 0 ? 'Paid' : 'Partial'
             });
             // Update farmer
             const farmerRef = doc(db, 'farmers', entry.farmer_id);
             const farmerSnap = await getDoc(farmerRef);
             if (farmerSnap.exists()) {
-              const currentDue = Math.max(0, (farmerSnap.data().current_due || 0) - oldDue);
+              const currentDue = Math.max(0, (farmerSnap.data().current_due || 0) - finalAmt);
               await updateDoc(farmerRef, { current_due: currentDue });
             }
           }
@@ -592,16 +595,20 @@ function handleMockAPI(action, payload) {
       const collectionIndex = collections.findIndex(c => c.entry_id === (payload.entry_id || payload.entryId));
       if (collectionIndex !== -1) {
         const entry = collections[collectionIndex];
-        const oldDue = entry.due_amount;
-        entry.paid_amount += oldDue;
-        entry.due_amount = 0;
-        entry.status = 'Paid';
+        const oldDue = entry.due_amount || 0;
+        const amtCleared = parseFloat(payload.amount !== undefined ? payload.amount : oldDue);
+        const finalAmt = Math.min(oldDue, amtCleared);
+        const remainingDue = Math.max(0, oldDue - finalAmt);
+
+        entry.paid_amount += finalAmt;
+        entry.due_amount = remainingDue;
+        entry.status = remainingDue <= 0 ? 'Paid' : 'Partial';
         setMockData('GAUDAI_COLLECTIONS', collections);
 
         // Update farmer
         const fIdx = farmers.findIndex(f => f.farmer_id === entry.farmer_id);
         if (fIdx !== -1) {
-          farmers[fIdx].current_due = Math.max(0, (farmers[fIdx].current_due || 0) - oldDue);
+          farmers[fIdx].current_due = Math.max(0, (farmers[fIdx].current_due || 0) - finalAmt);
           setMockData('GAUDAI_FARMERS', farmers);
         }
         return { success: true, message: 'Payment recorded successfully' };
