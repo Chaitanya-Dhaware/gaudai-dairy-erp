@@ -606,10 +606,9 @@ export const useAppStore = create((set, get) => ({
         sheetsIdExpense: settings.sheetsIdExpense
       });
 
+      const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
+      const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
       if (res && res.success) {
-        const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
-        const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
-
         if (!isMockMode) {
           const collectionsSnap = await getDocs(collection(db, 'collections')).catch(() => null);
           const salesSnap = await getDocs(collection(db, 'sales')).catch(() => null);
@@ -683,10 +682,11 @@ export const useAppStore = create((set, get) => ({
         await get().loadAllData();
         return { success: true };
       }
-      return { success: false, message: res ? res.message : 'No response from server' };
+      return { success: false, message: `${res ? res.message : 'No response from server'} (Using Apps Script URL: ${appScriptUrl})` };
     } catch (e) {
+      const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
       console.error('clearAllTransactions failed:', e);
-      return { success: false, message: e.message };
+      return { success: false, message: `${e.message} (Using Apps Script URL: ${appScriptUrl})` };
     } finally {
       set({ loading: false });
     }
