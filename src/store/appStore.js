@@ -681,12 +681,12 @@ export const useAppStore = create((set, get) => ({
 
         // Reload cache locally
         await get().loadAllData();
-        return true;
+        return { success: true };
       }
-      return false;
+      return { success: false, message: res ? res.message : 'No response from server' };
     } catch (e) {
       console.error('clearAllTransactions failed:', e);
-      return false;
+      return { success: false, message: e.message };
     } finally {
       set({ loading: false });
     }

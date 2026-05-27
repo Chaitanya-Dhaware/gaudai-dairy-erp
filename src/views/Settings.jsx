@@ -135,11 +135,12 @@ export function Settings() {
       
     if (window.confirm(confirmMessage)) {
       try {
-        const success = await clearAllTransactions();
-        if (success) {
+        const res = await clearAllTransactions();
+        if (res && res.success) {
           toast.success(isMarathi ? 'डेटाबेस यशस्वीरीत्या साफ केला आणि रीसेट केला!' : 'Database cleared and reset successfully!');
         } else {
-          toast.error(isMarathi ? 'डेटाबेस साफ करण्यात अडचण आली' : 'Failed to clear database');
+          const errMsg = res ? res.message : '';
+          toast.error((isMarathi ? 'डेटाबेस साफ करण्यात अडचण आली: ' : 'Failed to clear database: ') + errMsg);
         }
       } catch (err) {
         console.error(err);
