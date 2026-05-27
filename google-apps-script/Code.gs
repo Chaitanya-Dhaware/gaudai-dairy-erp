@@ -125,8 +125,123 @@ function doGet(e) {
         var sheetId = sheet.getSheetId();
         var url = "https://docs.google.com/spreadsheets/d/" + spreadsheetId + "/edit#gid=" + sheetId;
         
-        // Return HTML output that redirects the user to the sheet tab
-        var redirectHtml = "<script>window.location.replace('" + url + "');</script>";
+        // Return a premium redirection HTML page to bypass iframe sandboxing limits
+        var redirectHtml = '<!DOCTYPE html>\n' +
+          '<html>\n' +
+          '<head>\n' +
+          '  <base target="_top">\n' +
+          '  <meta name="viewport" content="width=device-width, initial-scale=1">\n' +
+          '  <style>\n' +
+          '    body {\n' +
+          '      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;\n' +
+          '      background-color: #f4f6f8;\n' +
+          '      display: flex;\n' +
+          '      justify-content: center;\n' +
+          '      align-items: center;\n' +
+          '      height: 100vh;\n' +
+          '      margin: 0;\n' +
+          '      color: #1e293b;\n' +
+          '    }\n' +
+          '    .card {\n' +
+          '      background: white;\n' +
+          '      padding: 40px 32px;\n' +
+          '      border-radius: 20px;\n' +
+          '      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);\n' +
+          '      text-align: center;\n' +
+          '      max-width: 440px;\n' +
+          '      width: 90%;\n' +
+          '      border: 1px solid rgba(0, 0, 0, 0.04);\n' +
+          '    }\n' +
+          '    .icon-container {\n' +
+          '      width: 64px;\n' +
+          '      height: 64px;\n' +
+          '      background-color: #e2f0d9;\n' +
+          '      border-radius: 16px;\n' +
+          '      display: flex;\n' +
+          '      align-items: center;\n' +
+          '      justify-content: center;\n' +
+          '      margin: 0 auto 24px;\n' +
+          '    }\n' +
+          '    .icon {\n' +
+          '      width: 32px;\n' +
+          '      height: 32px;\n' +
+          '      color: #388e3c;\n' +
+          '    }\n' +
+          '    .spinner {\n' +
+          '      border: 3px solid #e2e8f0;\n' +
+          '      border-top: 3px solid #10b981;\n' +
+          '      border-radius: 50%;\n' +
+          '      width: 24px;\n' +
+          '      height: 24px;\n' +
+          '      animation: spin 1s linear infinite;\n' +
+          '      margin: 0 auto 20px;\n' +
+          '    }\n' +
+          '    @keyframes spin {\n' +
+          '      0% { transform: rotate(0deg); }\n' +
+          '      100% { transform: rotate(360deg); }\n' +
+          '    }\n' +
+          '    h2 {\n' +
+          '      font-size: 20px;\n' +
+          '      font-weight: 700;\n' +
+          '      margin: 0 0 8px 0;\n' +
+          '      color: #0f172a;\n' +
+          '    }\n' +
+          '    p {\n' +
+          '      color: #64748b;\n' +
+          '      font-size: 14px;\n' +
+          '      line-height: 1.5;\n' +
+          '      margin: 0 0 28px 0;\n' +
+          '    }\n' +
+          '    .btn {\n' +
+          '      display: inline-flex;\n' +
+          '      align-items: center;\n' +
+          '      justify-content: center;\n' +
+          '      background-color: #10b981;\n' +
+          '      color: white;\n' +
+          '      text-decoration: none;\n' +
+          '      padding: 12px 28px;\n' +
+          '      border-radius: 12px;\n' +
+          '      font-weight: 600;\n' +
+          '      font-size: 14px;\n' +
+          '      transition: all 0.2s;\n' +
+          '      box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2), 0 2px 4px -1px rgba(16, 185, 129, 0.1);\n' +
+          '    }\n' +
+          '    .btn:hover {\n' +
+          '      background-color: #059669;\n' +
+          '      transform: translateY(-1px);\n' +
+          '      box-shadow: 0 6px 8px -1px rgba(16, 185, 129, 0.25);\n' +
+          '    }\n' +
+          '  </style>\n' +
+          '</head>\n' +
+          '<body>\n' +
+          '  <div class="card">\n' +
+          '    <div class="icon-container">\n' +
+          '      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\n' +
+          '        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>\n' +
+          '        <polyline points="14 2 14 8 20 8"></polyline>\n' +
+          '        <line x1="8" y1="13" x2="16" y2="13"></line>\n' +
+          '        <line x1="8" y1="17" x2="16" y2="17"></line>\n' +
+          '        <line x1="8" y1="9" x2="10" y2="9"></line>\n' +
+          '      </svg>\n' +
+          '    </div>\n' +
+          '    <div class="spinner"></div>\n' +
+          '    <h2>गूगल शीट उघडत आहे...</h2>\n' +
+          '    <p style="margin-bottom: 8px; font-weight: 500;">Opening Google Sheet...</p>\n' +
+          '    <p>We are opening the sheet for <strong>' + dateStrFormatted + '</strong>. If it does not load automatically, click the button below.</p>\n' +
+          '    <a href="' + url + '" class="btn" target="_top">Open Spreadsheet</a>\n' +
+          '  </div>\n' +
+          '  <script>\n' +
+          '    setTimeout(function() {\n' +
+          '      try {\n' +
+          '        window.top.location.href = "' + url + '";\n' +
+          '      } catch(e) {\n' +
+          '        console.error("Auto-redirect blocked by sandbox:", e);\n' +
+          '      }\n' +
+          '    }, 300);\n' +
+          '  </script>\n' +
+          '</body>\n' +
+          '</html>';
+        
         return HtmlService.createHtmlOutput(redirectHtml);
       }
     } catch(err) {

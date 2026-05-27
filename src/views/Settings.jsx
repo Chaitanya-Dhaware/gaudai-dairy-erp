@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
 import { Database, MessageSquare, ShieldCheck, Download, Trash2 } from 'lucide-react';
@@ -22,16 +22,31 @@ export function Settings() {
   const [activeSubTab, setActiveSubTab] = useState('database'); // database, whatsapp, staff, backup
 
   // State bindings for form
-  const [baseRate, setBaseRate] = useState(settings.baseRate || 8.5);
-  const [businessName, setBusinessName] = useState(settings.businessName || 'Gaudai AI Dairy');
-  const [adminMobile, setAdminMobile] = useState(settings.adminMobile || '');
-  const [whatsappToken, setWhatsappToken] = useState(settings.whatsappToken || '');
-  const [whatsappPhoneId, setWhatsappPhoneId] = useState(settings.whatsappPhoneId || '');
+  const [baseRate, setBaseRate] = useState(8.5);
+  const [businessName, setBusinessName] = useState('Gaudai AI Dairy');
+  const [adminMobile, setAdminMobile] = useState('');
+  const [whatsappToken, setWhatsappToken] = useState('');
+  const [whatsappPhoneId, setWhatsappPhoneId] = useState('');
   
-  const [sheetsIdCollection, setSheetsIdCollection] = useState(settings.sheetsIdCollection || '');
-  const [sheetsIdCustomer, setSheetsIdCustomer] = useState(settings.sheetsIdCustomer || '');
-  const [sheetsIdExpense, setSheetsIdExpense] = useState(settings.sheetsIdExpense || '');
-  const [sheetsIdMaster, setSheetsIdMaster] = useState(settings.sheetsIdMaster || '');
+  const [sheetsIdCollection, setSheetsIdCollection] = useState('');
+  const [sheetsIdCustomer, setSheetsIdCustomer] = useState('');
+  const [sheetsIdExpense, setSheetsIdExpense] = useState('');
+  const [sheetsIdMaster, setSheetsIdMaster] = useState('');
+
+  // Sync settings when they are fetched from the store
+  useEffect(() => {
+    if (settings) {
+      setBaseRate(settings.baseRate || 8.5);
+      setBusinessName(settings.businessName || 'Gaudai AI Dairy');
+      setAdminMobile(settings.adminMobile || '');
+      setWhatsappToken(settings.whatsappToken || '');
+      setWhatsappPhoneId(settings.whatsappPhoneId || '');
+      setSheetsIdCollection(settings.sheetsIdCollection || '');
+      setSheetsIdCustomer(settings.sheetsIdCustomer || '');
+      setSheetsIdExpense(settings.sheetsIdExpense || '');
+      setSheetsIdMaster(settings.sheetsIdMaster || '');
+    }
+  }, [settings]);
 
   // User management mockup (state managed locally or in cache)
   const [staffList, setStaffList] = useState([

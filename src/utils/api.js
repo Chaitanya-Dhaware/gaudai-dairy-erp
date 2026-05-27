@@ -7,6 +7,33 @@ import { collection, doc, setDoc, updateDoc, deleteDoc, getDocs, getDoc } from '
 const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || '';
 const IS_MOCK_MODE = !APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('placeholder');
 
+// Helper to make direct requests to Google Apps Script Web App
+async function fetchFromAppsScript(action, payload = {}) {
+  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('placeholder')) {
+    return { success: false, message: 'Mock mode active' };
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 seconds timeout
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action, ...payload }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      return { success: false, message: `HTTP error: ${res.statusText}` };
+    }
+    return await res.json();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.error('fetchFromAppsScript error:', err);
+    return { success: false, message: err.toString() };
+  }
+}
+
 // Helper to simulate network latency
 const delay = (ms) => {
   if (typeof globalThis.process !== 'undefined' && globalThis.process.env?.NODE_ENV === 'test') {
@@ -495,6 +522,18 @@ export async function callAPI(action, payload = {}) {
     try {
       if (action.startsWith('get')) {
         response = await readFromFirestore(action);
+        // If settings doc is not found in Firestore or has no sheet IDs, try to fetch from Apps Script as fallback
+        if (action === 'getSettings' && (!response.success || !response.data?.sheetsIdCollection)) {
+          console.log('Settings not found in Firestore or incomplete, querying Apps Script as fallback...');
+          const gasRes = await fetchFromAppsScript('getSettings', payload);
+          if (gasRes && gasRes.success && gasRes.data) {
+            response = gasRes;
+            // Write them to Firestore so they are cached/synced
+            await writeToFirestore('updateSettings', gasRes.data).catch(e => {
+              console.warn('Failed to sync settings to Firestore:', e);
+            });
+          }
+        }
       } else {
         response = await writeToFirestore(action, payload);
       }

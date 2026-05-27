@@ -11,29 +11,8 @@ export function HomeDashboard() {
 
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const handleOpenSpreadsheet = (type) => {
-    const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
-    const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
-
-    const sheetId = type === 'collection' 
-      ? settings?.sheetsIdCollection 
-      : type === 'customer' 
-        ? settings?.sheetsIdCustomer 
-        : settings?.sheetsIdExpense;
-
-    if (!sheetId) {
-      toast.error(isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set');
-      return;
-    }
-
-    if (isMockMode) {
-      const baseUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
-      window.open(baseUrl, '_blank');
-    } else {
-      const redirectUrl = `${appScriptUrl}?action=openTab&type=${type}&date=${selectedDate}`;
-      window.open(redirectUrl, '_blank');
-    }
-  };
+  const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
+  const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
 
   const formatSheetDate = (dateStr) => {
     if (!dateStr) return '';
@@ -279,13 +258,19 @@ export function HomeDashboard() {
               </p>
             </div>
             {settings?.sheetsIdCollection ? (
-              <button
-                onClick={() => handleOpenSpreadsheet('collection')}
+              <a
+                href={
+                  isMockMode 
+                    ? `https://docs.google.com/spreadsheets/d/${settings.sheetsIdCollection}/edit` 
+                    : `${appScriptUrl}?action=openTab&type=collection&date=${selectedDate}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
               >
                 <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
                 <ExternalLink className="w-3.5 h-3.5" />
-              </button>
+              </a>
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
@@ -306,13 +291,19 @@ export function HomeDashboard() {
               </p>
             </div>
             {settings?.sheetsIdCustomer ? (
-              <button
-                onClick={() => handleOpenSpreadsheet('customer')}
+              <a
+                href={
+                  isMockMode 
+                    ? `https://docs.google.com/spreadsheets/d/${settings.sheetsIdCustomer}/edit` 
+                    : `${appScriptUrl}?action=openTab&type=customer&date=${selectedDate}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
               >
                 <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
                 <ExternalLink className="w-3.5 h-3.5" />
-              </button>
+              </a>
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
@@ -336,13 +327,19 @@ export function HomeDashboard() {
               </div>
             </div>
             {settings?.sheetsIdExpense ? (
-              <button
-                onClick={() => handleOpenSpreadsheet('expense')}
+              <a
+                href={
+                  isMockMode 
+                    ? `https://docs.google.com/spreadsheets/d/${settings.sheetsIdExpense}/edit` 
+                    : `${appScriptUrl}?action=openTab&type=expense&date=${selectedDate}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
               >
                 <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
                 <ExternalLink className="w-3.5 h-3.5" />
-              </button>
+              </a>
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
