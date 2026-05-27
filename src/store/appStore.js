@@ -611,21 +611,33 @@ export const useAppStore = create((set, get) => ({
         const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
 
         if (!isMockMode) {
-          const collectionsSnap = await getDocs(collection(db, 'collections')).catch(() => ({ docs: [] }));
-          const salesSnap = await getDocs(collection(db, 'sales')).catch(() => ({ docs: [] }));
-          const expensesSnap = await getDocs(collection(db, 'expenses')).catch(() => ({ docs: [] }));
-          const farmersSnap = await getDocs(collection(db, 'farmers')).catch(() => ({ docs: [] }));
-          const customersSnap = await getDocs(collection(db, 'customers')).catch(() => ({ docs: [] }));
-          const productsSnap = await getDocs(collection(db, 'products')).catch(() => ({ docs: [] }));
+          const collectionsSnap = await getDocs(collection(db, 'collections')).catch(() => null);
+          const salesSnap = await getDocs(collection(db, 'sales')).catch(() => null);
+          const expensesSnap = await getDocs(collection(db, 'expenses')).catch(() => null);
+          const farmersSnap = await getDocs(collection(db, 'farmers')).catch(() => null);
+          const customersSnap = await getDocs(collection(db, 'customers')).catch(() => null);
+          const productsSnap = await getDocs(collection(db, 'products')).catch(() => null);
 
           // Delete Firestore records
           const deletePromises = [];
-          collectionsSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
-          salesSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
-          expensesSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
-          farmersSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
-          customersSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
-          productsSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          if (collectionsSnap && typeof collectionsSnap.forEach === 'function') {
+            collectionsSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          }
+          if (salesSnap && typeof salesSnap.forEach === 'function') {
+            salesSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          }
+          if (expensesSnap && typeof expensesSnap.forEach === 'function') {
+            expensesSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          }
+          if (farmersSnap && typeof farmersSnap.forEach === 'function') {
+            farmersSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          }
+          if (customersSnap && typeof customersSnap.forEach === 'function') {
+            customersSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          }
+          if (productsSnap && typeof productsSnap.forEach === 'function') {
+            productsSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          }
 
           // Seed default products back to Firestore
           const defaultProducts = [
