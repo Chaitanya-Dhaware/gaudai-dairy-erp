@@ -312,7 +312,7 @@ function doPost(e) {
         result = getSpreadsheetTabUrl(requestData);
         break;
       case 'clearTransactions':
-        result = clearTransactions();
+        result = clearTransactions(requestData);
         break;
 
       // --- COLLECTION DB ACTIONS ---
