@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
 import LanguageToggle from '../components/LanguageToggle';
+import gaudaiLogo from '../assets/gaudai-logo.png';
 import { toast } from 'react-hot-toast';
 import { Lock, Mail, ArrowRight, UserCheck } from 'lucide-react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
@@ -82,7 +83,7 @@ export function Login() {
           
           <div className="flex items-center">
             <div className="bg-white rounded-2xl px-5 py-3 shadow-lg">
-              <img src="/src/assets/gaudai-logo.png" alt="गौदाई" className="h-12 w-auto object-contain" />
+              <img src={gaudaiLogo} alt="गौदाई" className="h-12 w-auto object-contain" />
             </div>
           </div>
 

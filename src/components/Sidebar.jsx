@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
 import { LanguageToggle } from './LanguageToggle';
+import gaudaiLogo from '../assets/gaudai-logo.png';
 import { 
   Home, 
   Droplet, 
@@ -32,7 +33,7 @@ export function Sidebar() {
       {/* Brand Header */}
       <div className="flex items-center space-x-3 px-5 py-5 border-b border-black/[0.08]">
         <div className="w-28 flex-shrink-0">
-          <img src="/src/assets/gaudai-logo.png" alt="गौदाई" className="w-full h-auto object-contain" />
+          <img src={gaudaiLogo} alt="गौदाई" className="w-full h-auto object-contain" />
         </div>
       </div>
 

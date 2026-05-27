@@ -8,6 +8,7 @@ import CustomerWorkspace from './views/CustomerWorkspace';
 import ExpenseWorkspace from './views/ExpenseWorkspace';
 import AccountsWorkspace from './views/AccountsWorkspace';
 import Settings from './views/Settings';
+import gaudaiLogo from './assets/gaudai-logo.png';
 
 const toastStyle = {
   duration: 3000,
@@ -30,7 +31,7 @@ function AuthLoadingScreen() {
       background: '#F8FAF9', gap: '20px'
     }}>
       <img
-        src="/src/assets/gaudai-logo.png"
+        src={gaudaiLogo}
         alt="गौदाई"
         style={{ width: '140px', height: 'auto', objectFit: 'contain' }}
       />
