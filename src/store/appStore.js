@@ -142,42 +142,7 @@ export const useAppStore = create((set, get) => ({
         const missingSales = isMockMode ? [] : fsSales.filter(bs => !d.sales.some(ss => ss.bill_id === bs.bill_id));
         const missingExpenses = isMockMode ? [] : fsExpenses.filter(be => !d.expenses.some(se => se.expense_id === be.expense_id));
 
-        // Check if there are any missing entries in Firestore compared to Sheets
-        const missingFsFarmers = isMockMode ? [] : (d.farmers || []).filter(sf => !fsFarmers.some(bf => bf.farmer_id === sf.farmer_id));
-        const missingFsCustomers = isMockMode ? [] : (d.customers || []).filter(sc => !fsCustomers.some(bc => bc.customer_id === sc.customer_id));
-        const missingFsProducts = isMockMode ? [] : (d.products || []).filter(sp => !fsProducts.some(bp => bp.product_id === sp.product_id));
-        const missingFsCollections = isMockMode ? [] : (d.collections || []).filter(sc => !fsCollections.some(bc => bc.entry_id === sc.entry_id));
-        const missingFsSales = isMockMode ? [] : (d.sales || []).filter(ss => !fsSales.some(bc => bc.bill_id === ss.bill_id));
-        const missingFsExpenses = isMockMode ? [] : (d.expenses || []).filter(se => !fsExpenses.some(bc => bc.expense_id === se.expense_id));
 
-        const needsFirestoreSync = 
-          missingFsFarmers.length > 0 ||
-          missingFsCustomers.length > 0 ||
-          missingFsProducts.length > 0 ||
-          missingFsCollections.length > 0 ||
-          missingFsSales.length > 0 ||
-          missingFsExpenses.length > 0;
-
-        if (needsFirestoreSync) {
-          // Sync missing data from Sheets to Firestore in the background
-          (async () => {
-            try {
-              console.log(`Syncing missing data to Firestore: Farmers (${missingFsFarmers.length}), Customers (${missingFsCustomers.length}), Products (${missingFsProducts.length}), Collections (${missingFsCollections.length}), Sales (${missingFsSales.length}), Expenses (${missingFsExpenses.length})`);
-              const batchPromises = [];
-              missingFsFarmers.forEach(item => batchPromises.push(setDoc(doc(db, 'farmers', item.farmer_id), item)));
-              missingFsCustomers.forEach(item => batchPromises.push(setDoc(doc(db, 'customers', item.customer_id), item)));
-              missingFsProducts.forEach(item => batchPromises.push(setDoc(doc(db, 'products', item.product_id), item)));
-              missingFsCollections.forEach(item => batchPromises.push(setDoc(doc(db, 'collections', item.entry_id), item)));
-              missingFsSales.forEach(item => batchPromises.push(setDoc(doc(db, 'sales', item.bill_id), item)));
-              missingFsExpenses.forEach(item => batchPromises.push(setDoc(doc(db, 'expenses', item.expense_id), item)));
-              
-              await Promise.all(batchPromises);
-              console.log('Firestore sync completed successfully.');
-            } catch (err) {
-              console.error('Error backing up Sheets data to Firestore:', err);
-            }
-          })();
-        }
 
         const needsSync = 
           missingFarmers.length > 0 ||
