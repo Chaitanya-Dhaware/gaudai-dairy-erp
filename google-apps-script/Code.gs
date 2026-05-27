@@ -154,10 +154,19 @@ function doPost(e) {
       case 'importBackupData':
         result = importBackupData(requestData);
         break;
+      case 'getSpreadsheetTabUrl':
+        result = getSpreadsheetTabUrl(requestData);
+        break;
+      case 'clearTransactions':
+        result = clearTransactions();
+        break;
 
       // --- COLLECTION DB ACTIONS ---
       case 'registerFarmer':
         result = registerFarmer(requestData);
+        break;
+      case 'deleteFarmer':
+        result = deleteFarmer(requestData);
         break;
       case 'getFarmerList':
         result = getFarmerList();
@@ -324,6 +333,11 @@ function autoSetupSheets() {
       createSheetIfMissing(ss, "Farmers", ["farmer_id", "name", "mobile", "address", "milk_type", "current_due", "created_at"]);
       createSheetIfMissing(ss, "Milk_Collections", ["entry_id", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
       createSheetIfMissing(ss, "Payments", ["payment_id", "farmer_id", "amount", "date", "notes", "timestamp"]);
+      
+      var defaultSheet = ss.getSheetByName("Sheet1");
+      if (defaultSheet && ss.getSheets().length > 1) {
+        ss.deleteSheet(defaultSheet);
+      }
     } catch(e) {}
   }
 
@@ -359,6 +373,11 @@ function autoSetupSheets() {
 
       createSheetIfMissing(ss, "Sales", ["bill_id", "customer_id", "date", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
       createSheetIfMissing(ss, "Payments", ["payment_id", "customer_id", "amount", "date", "timestamp"]);
+      
+      var defaultSheet = ss.getSheetByName("Sheet1");
+      if (defaultSheet && ss.getSheets().length > 1) {
+        ss.deleteSheet(defaultSheet);
+      }
     } catch(e) {}
   }
 
@@ -509,7 +528,7 @@ function registerFarmer(data) {
       }
     }
   }
-  var farmerId = "F-" + String(maxId + 1).padStart(2, '0');
+  var farmerId = data.farmer_id || ("F-" + String(maxId + 1).padStart(2, '0'));
 
   sheet.appendRow([
     farmerId,
@@ -517,8 +536,8 @@ function registerFarmer(data) {
     data.mobile,
     data.address || "",
     data.milk_type,
-    0, // due
-    new Date().toISOString()
+    parseSafeFloat(data.current_due) || 0,
+    data.created_at || new Date().toISOString()
   ]);
 
   return { success: true, message: "Farmer registered successfully", data: { farmer_id: farmerId } };
@@ -556,7 +575,7 @@ function addMilkCollection(data) {
 
   var status = dueVal <= 0 ? 'Paid' : (paidVal > 0 ? 'Partial' : 'Pending');
 
-  colSheet.appendRow([
+  var rowData = [
     entryId,
     data.farmer_id,
     data.date,
@@ -570,7 +589,23 @@ function addMilkCollection(data) {
     dueVal,
     status,
     new Date().toISOString()
-  ]);
+  ];
+
+  colSheet.appendRow(rowData);
+
+  // Append to daily sheet
+  try {
+    var dateStrFormatted = formatSheetDate(data.date);
+    var dailySheetName = "Daily_" + dateStrFormatted;
+    var dailySheet = ss.getSheetByName(dailySheetName);
+    if (!dailySheet) {
+      createSheetIfMissing(ss, dailySheetName, ["entry_id", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
+      dailySheet = ss.getSheetByName(dailySheetName);
+    }
+    dailySheet.appendRow(rowData);
+  } catch(e) {
+    logErrorToSheets("Failed to write milk collection to daily sheet: " + e.toString());
+  }
 
   // Update farmer current_due
   var farmSheet = ss.getSheetByName("Farmers");
@@ -734,7 +769,7 @@ function addCustomer(data) {
       }
     }
   }
-  var customerId = "c-" + String(maxId + 1).padStart(2, '0');
+  var customerId = data.customer_id || ("c-" + String(maxId + 1).padStart(2, '0'));
 
   sheet.appendRow([
     customerId,
@@ -742,8 +777,8 @@ function addCustomer(data) {
     data.owner_name,
     data.mobile,
     data.address || "",
-    0,
-    new Date().toISOString()
+    parseSafeFloat(data.current_due) || 0,
+    data.created_at || new Date().toISOString()
   ]);
   return { success: true, message: "Customer added", data: { customer_id: customerId } };
 }
@@ -787,17 +822,17 @@ function addProduct(data) {
   var ss = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
   var sheet = ss.getSheetByName("Products");
   var rows = sheet.getDataRange().getValues();
-  var productId = "P" + String(rows.length).padStart(3, '0');
+  var productId = data.product_id || ("P" + String(rows.length).padStart(3, '0'));
 
   sheet.appendRow([
     productId,
     data.product_name,
     data.category,
     data.unit_price,
-    "Active",
-    new Date().toISOString()
+    data.status || "Active",
+    data.updated_at || new Date().toISOString()
   ]);
-  return { success: true };
+  return { success: true, data: { product_id: productId, product_name: data.product_name, category: data.category, unit_price: data.unit_price, status: data.status || "Active" } };
 }
 
 function updateProduct(productId, data) {
@@ -829,7 +864,7 @@ function addSale(data) {
 
   var status = dueVal <= 0 ? 'Paid' : (paidVal > 0 ? 'Partial' : 'Pending');
 
-  salesSheet.appendRow([
+  var rowData = [
     billId,
     data.customer_id,
     data.date,
@@ -838,7 +873,23 @@ function addSale(data) {
     dueVal,
     status,
     new Date().toISOString()
-  ]);
+  ];
+
+  salesSheet.appendRow(rowData);
+
+  // Append to daily sheet
+  try {
+    var dateStrFormatted = formatSheetDate(data.date);
+    var dailySheetName = "Daily_" + dateStrFormatted;
+    var dailySheet = ss.getSheetByName(dailySheetName);
+    if (!dailySheet) {
+      createSheetIfMissing(ss, dailySheetName, ["bill_id", "customer_id", "date", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
+      dailySheet = ss.getSheetByName(dailySheetName);
+    }
+    dailySheet.appendRow(rowData);
+  } catch(e) {
+    logErrorToSheets("Failed to write sale to daily sheet: " + e.toString());
+  }
 
   // Update customer current_due
   var custSheet = ss.getSheetByName("Customers");
@@ -919,8 +970,24 @@ function getSalesHistory() {
 }
 
 function formatSheetDate(dateStr) {
+  if (!dateStr) {
+    dateStr = new Date().toISOString().split('T')[0];
+  }
   // dateStr format is "YYYY-MM-DD"
-  var parts = dateStr.split('-');
+  var parts = String(dateStr).split('-');
+  if (parts.length < 3) {
+    try {
+      var d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        dateStr = d.toISOString().split('T')[0];
+        parts = dateStr.split('-');
+      } else {
+        parts = new Date().toISOString().split('T')[0].split('-');
+      }
+    } catch(e) {
+      parts = new Date().toISOString().split('T')[0].split('-');
+    }
+  }
   var year = parts[0];
   var monthNum = parseInt(parts[1], 10);
   var day = parts[2];
@@ -1273,7 +1340,7 @@ function importBackupData(data) {
         var existingIds = sheet.getDataRange().getValues().map(function(r) { return r[0]; });
         data.collections.forEach(function(c) {
           if (c.entry_id && existingIds.indexOf(c.entry_id) === -1) {
-            sheet.appendRow([
+            var rowData = [
               c.entry_id,
               c.farmer_id || "",
               c.date || "",
@@ -1287,8 +1354,23 @@ function importBackupData(data) {
               parseSafeFloat(c.due_amount),
               c.status || "Pending",
               c.timestamp || new Date().toISOString()
-            ]);
+            ];
+            sheet.appendRow(rowData);
             existingIds.push(c.entry_id);
+
+            // Also write to daily sheet
+            try {
+              var dateStrFormatted = formatSheetDate(c.date);
+              var dailySheetName = "Daily_" + dateStrFormatted;
+              var dailySheet = ssCol.getSheetByName(dailySheetName);
+              if (!dailySheet) {
+                createSheetIfMissing(ssCol, dailySheetName, ["entry_id", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
+                dailySheet = ssCol.getSheetByName(dailySheetName);
+              }
+              dailySheet.appendRow(rowData);
+            } catch(e) {
+              logErrorToSheets("importBackupData failed to write collection to daily sheet: " + e.toString());
+            }
           }
         });
       }
@@ -1347,7 +1429,7 @@ function importBackupData(data) {
         var existingIds = sheet.getDataRange().getValues().map(function(r) { return r[0]; });
         data.sales.forEach(function(s) {
           if (s.bill_id && existingIds.indexOf(s.bill_id) === -1) {
-            sheet.appendRow([
+            var rowData = [
               s.bill_id,
               s.customer_id || "",
               s.date || "",
@@ -1356,8 +1438,23 @@ function importBackupData(data) {
               parseSafeFloat(s.due_amount),
               s.status || "Pending",
               s.timestamp || new Date().toISOString()
-            ]);
+            ];
+            sheet.appendRow(rowData);
             existingIds.push(s.bill_id);
+
+            // Also write to daily sheet
+            try {
+              var dateStrFormatted = formatSheetDate(s.date);
+              var dailySheetName = "Daily_" + dateStrFormatted;
+              var dailySheet = ssCust.getSheetByName(dailySheetName);
+              if (!dailySheet) {
+                createSheetIfMissing(ssCust, dailySheetName, ["bill_id", "customer_id", "date", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
+                dailySheet = ssCust.getSheetByName(dailySheetName);
+              }
+              dailySheet.appendRow(rowData);
+            } catch(e) {
+              logErrorToSheets("importBackupData failed to write sale to daily sheet: " + e.toString());
+            }
           }
         });
       }
@@ -1375,7 +1472,7 @@ function importBackupData(data) {
         var existingIds = sheet.getDataRange().getValues().map(function(r) { return r[0]; });
         data.expenses.forEach(function(exp) {
           if (exp.expense_id && existingIds.indexOf(exp.expense_id) === -1) {
-            sheet.appendRow([
+            var rowData = [
               exp.expense_id,
               exp.date || "",
               exp.reason || "",
@@ -1384,8 +1481,23 @@ function importBackupData(data) {
               exp.payment_method || "Cash",
               exp.notes || "",
               exp.timestamp || new Date().toISOString()
-            ]);
+            ];
+            sheet.appendRow(rowData);
             existingIds.push(exp.expense_id);
+
+            // Also write to daily sheet
+            try {
+              var dateStrFormatted = formatSheetDate(exp.date);
+              var dailySheetName = "Daily_" + dateStrFormatted;
+              var dailySheet = ssExp.getSheetByName(dailySheetName);
+              if (!dailySheet) {
+                createSheetIfMissing(ssExp, dailySheetName, ["expense_id", "date", "reason", "amount", "category", "payment_method", "notes", "timestamp"]);
+                dailySheet = ssExp.getSheetByName(dailySheetName);
+              }
+              dailySheet.appendRow(rowData);
+            } catch(e) {
+              logErrorToSheets("importBackupData failed to write expense to daily sheet: " + e.toString());
+            }
           }
         });
       }
@@ -1395,4 +1507,132 @@ function importBackupData(data) {
   }
 
   return { success: true, message: "Backup data synchronized successfully" };
+}
+
+function getSpreadsheetTabUrl(requestData) {
+  var type = requestData.type; // 'collection', 'customer', 'expense'
+  var dateStr = requestData.date; // YYYY-MM-DD
+  
+  var spreadsheetId = "";
+  var headers = [];
+  var tabPrefix = "Daily_";
+  
+  if (type === 'collection') {
+    spreadsheetId = CONFIG.COLLECTION_DB_ID;
+    headers = ["entry_id", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"];
+  } else if (type === 'customer') {
+    spreadsheetId = CONFIG.CUSTOMER_DB_ID;
+    headers = ["bill_id", "customer_id", "date", "total_amount", "paid_amount", "due_amount", "status", "timestamp"];
+  } else if (type === 'expense') {
+    spreadsheetId = CONFIG.EXPENSE_DB_ID;
+    headers = ["expense_id", "date", "reason", "amount", "category", "payment_method", "notes", "timestamp"];
+  } else {
+    throw new Error("Invalid spreadsheet type: " + type);
+  }
+  
+  if (!spreadsheetId) {
+    throw new Error("Spreadsheet ID for " + type + " is not configured.");
+  }
+  
+  var ss = SpreadsheetApp.openById(spreadsheetId);
+  var dateStrFormatted = formatSheetDate(dateStr);
+  var tabName = tabPrefix + dateStrFormatted;
+  
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) {
+    createSheetIfMissing(ss, tabName, headers);
+    sheet = ss.getSheetByName(tabName);
+  }
+  
+  var sheetId = sheet.getSheetId();
+  var url = "https://docs.google.com/spreadsheets/d/" + spreadsheetId + "/edit#gid=" + sheetId;
+  
+  return { success: true, url: url };
+}
+
+function deleteFarmer(requestData) {
+  var farmerId = requestData.farmer_id || requestData.farmerId;
+  if (!farmerId) {
+    throw new Error("Farmer ID is required for deletion");
+  }
+  var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+  var sheet = ss.getSheetByName("Farmers");
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][0] === farmerId) {
+      sheet.deleteRow(i + 1);
+      break;
+    }
+  }
+  return { success: true, message: "Farmer deleted successfully" };
+}
+
+function clearTransactions() {
+  // 1. Collection DB
+  try {
+    var ssCol = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+    clearSheetKeepHeader(ssCol, "Milk_Collections");
+    clearSheetKeepHeader(ssCol, "Payments");
+    resetDues(ssCol, "Farmers", 5); // 0-indexed column 5 is current_due (6th column)
+    deleteDailySheets(ssCol);
+  } catch(e) {
+    logErrorToSheets("clearTransactions Collection DB error: " + e.toString());
+  }
+
+  // 2. Customer DB
+  try {
+    var ssCust = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
+    clearSheetKeepHeader(ssCust, "Sales");
+    clearSheetKeepHeader(ssCust, "Payments");
+    resetDues(ssCust, "Customers", 5); // 0-indexed column 5 is current_due
+    deleteDailySheets(ssCust);
+  } catch(e) {
+    logErrorToSheets("clearTransactions Customer DB error: " + e.toString());
+  }
+
+  // 3. Expense DB
+  try {
+    var ssExp = SpreadsheetApp.openById(CONFIG.EXPENSE_DB_ID);
+    clearSheetKeepHeader(ssExp, "Expenses");
+    deleteDailySheets(ssExp);
+  } catch(e) {
+    logErrorToSheets("clearTransactions Expense DB error: " + e.toString());
+  }
+
+  return { success: true, message: "All transactions cleared and dues reset successfully" };
+}
+
+function clearSheetKeepHeader(ss, sheetName) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (sheet) {
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.deleteRows(2, lastRow - 1);
+    }
+  }
+}
+
+function resetDues(ss, sheetName, dueColIndex) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (sheet) {
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      var range = sheet.getRange(2, dueColIndex + 1, lastRow - 1, 1);
+      var values = [];
+      for (var i = 0; i < lastRow - 1; i++) {
+        values.push([0]);
+      }
+      range.setValues(values);
+    }
+  }
+}
+
+function deleteDailySheets(ss) {
+  var sheets = ss.getSheets();
+  sheets.forEach(function(sheet) {
+    var name = sheet.getName();
+    if (name.indexOf("Daily_") === 0) {
+      ss.deleteSheet(sheet);
+    }
+  });
 }

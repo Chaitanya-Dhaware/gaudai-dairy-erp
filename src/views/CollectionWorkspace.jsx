@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
-import { Search, UserPlus, FileInput, IndianRupee, BarChart2, ShieldAlert, Calendar } from 'lucide-react';
+import { Search, UserPlus, FileInput, IndianRupee, BarChart2, ShieldAlert, Calendar, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function CollectionWorkspace() {
@@ -12,6 +12,7 @@ export function CollectionWorkspace() {
     collections,
     settings,
     registerFarmer,
+    deleteFarmer,
     addMilkCollection,
     markFarmerPaid,
     loading
@@ -85,6 +86,7 @@ export function CollectionWorkspace() {
           <FarmerRegistration
             farmers={farmers}
             registerFarmer={registerFarmer}
+            deleteFarmer={deleteFarmer}
             loading={loading}
             t={t}
             isMarathi={isMarathi}
@@ -140,6 +142,7 @@ export function CollectionWorkspace() {
 function FarmerRegistration({
   farmers,
   registerFarmer,
+  deleteFarmer,
   loading,
   t,
   isMarathi,
@@ -167,6 +170,15 @@ function FarmerRegistration({
       setMobile('');
       setAddress('');
       setMilkType('Cow');
+    }
+  };
+
+  const handleDeleteClick = (farmer) => {
+    const confirmMsg = isMarathi 
+      ? `तुम्हाला खात्री आहे की तुम्ही शेतकरी "${farmer.name}" (${farmer.farmer_id}) ला हटवू इच्छिता?`
+      : `Are you sure you want to delete farmer "${farmer.name}" (${farmer.farmer_id})?`;
+    if (window.confirm(confirmMsg)) {
+      deleteFarmer(farmer.farmer_id);
     }
   };
 
@@ -266,6 +278,7 @@ function FarmerRegistration({
                 <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{t('label.mobile')}</th>
                 <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{t('collection.milkType')}</th>
                 <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{t('customer.currentDue')}</th>
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase text-right">{isMarathi ? 'कृती' : 'Actions'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/[0.04]">
@@ -282,11 +295,20 @@ function FarmerRegistration({
                   <td className={`py-3.5 px-4 font-mono font-semibold ${f.current_due > 0 ? 'text-danger' : 'text-textSecondary'}`}>
                     {formatCurrency(f.current_due)}
                   </td>
+                  <td className="py-3.5 px-4 text-right">
+                    <button
+                      onClick={() => handleDeleteClick(f)}
+                      className="p-1.5 text-danger hover:bg-danger/10 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center"
+                      title={isMarathi ? 'शेतकरी हटवा' : 'Delete Farmer'}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {filteredFarmers.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-textSecondary">
+                  <td colSpan={6} className="py-8 text-center text-textSecondary">
                     {isMarathi ? 'शेतकरी आढळले नाहीत' : 'No farmers found.'}
                   </td>
                 </tr>

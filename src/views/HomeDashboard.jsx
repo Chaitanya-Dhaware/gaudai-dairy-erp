@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
-import { Droplet, Users, Receipt, PieChart, TrendingUp, TrendingDown, Clock, ShieldCheck, FileSpreadsheet, ExternalLink } from 'lucide-react';
+import { Droplet, Users, Receipt, PieChart, TrendingUp, TrendingDown, Clock, ShieldCheck, FileSpreadsheet, ExternalLink, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { callAPI } from '../utils/api';
 
 export function HomeDashboard() {
   const { t, i18n } = useTranslation();
@@ -10,6 +11,42 @@ export function HomeDashboard() {
   const isMarathi = i18n.language === 'mr';
 
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const [resolvingSheet, setResolvingSheet] = useState({
+    collection: false,
+    customer: false,
+    expense: false
+  });
+
+  const handleOpenSpreadsheet = async (type) => {
+    const sheetId = type === 'collection' 
+      ? settings?.sheetsIdCollection 
+      : type === 'customer' 
+        ? settings?.sheetsIdCustomer 
+        : settings?.sheetsIdExpense;
+
+    if (!sheetId) {
+      toast.error(isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set');
+      return;
+    }
+
+    const baseUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+    
+    // Open base spreadsheet in new tab immediately to bypass popup blockers
+    const newTab = window.open(baseUrl, '_blank');
+    
+    setResolvingSheet(prev => ({ ...prev, [type]: true }));
+    try {
+      const res = await callAPI('getSpreadsheetTabUrl', { type, date: selectedDate });
+      if (res && res.success && res.url) {
+        newTab.location.href = res.url;
+      }
+    } catch (err) {
+      console.error("Error resolving spreadsheet tab:", err);
+    } finally {
+      setResolvingSheet(prev => ({ ...prev, [type]: false }));
+    }
+  };
 
   const formatSheetDate = (dateStr) => {
     if (!dateStr) return '';
@@ -255,15 +292,23 @@ export function HomeDashboard() {
               </p>
             </div>
             {settings?.sheetsIdCollection ? (
-              <a
-                href={`https://docs.google.com/spreadsheets/d/${settings.sheetsIdCollection}/edit`}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+              <button
+                onClick={() => handleOpenSpreadsheet('collection')}
+                disabled={resolvingSheet.collection}
+                className="w-full py-2.5 bg-primary hover:bg-primary-light disabled:bg-primary/50 text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer disabled:cursor-not-allowed"
               >
-                <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+                {resolvingSheet.collection ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>{isMarathi ? 'शीट उघडत आहे...' : 'Opening Spreadsheet...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
@@ -284,15 +329,23 @@ export function HomeDashboard() {
               </p>
             </div>
             {settings?.sheetsIdCustomer ? (
-              <a
-                href={`https://docs.google.com/spreadsheets/d/${settings.sheetsIdCustomer}/edit`}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+              <button
+                onClick={() => handleOpenSpreadsheet('customer')}
+                disabled={resolvingSheet.customer}
+                className="w-full py-2.5 bg-primary hover:bg-primary-light disabled:bg-primary/50 text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer disabled:cursor-not-allowed"
               >
-                <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+                {resolvingSheet.customer ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>{isMarathi ? 'शीट उघडत आहे...' : 'Opening Spreadsheet...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
@@ -316,15 +369,23 @@ export function HomeDashboard() {
               </div>
             </div>
             {settings?.sheetsIdExpense ? (
-              <a
-                href={`https://docs.google.com/spreadsheets/d/${settings.sheetsIdExpense}/edit`}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
+              <button
+                onClick={() => handleOpenSpreadsheet('expense')}
+                disabled={resolvingSheet.expense}
+                className="w-full py-2.5 bg-primary hover:bg-primary-light disabled:bg-primary/50 text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer disabled:cursor-not-allowed"
               >
-                <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+                {resolvingSheet.expense ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>{isMarathi ? 'शीट उघडत आहे...' : 'Opening Spreadsheet...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}

@@ -220,6 +220,25 @@ async function syncWriteToFirestore(action, responseData, payload) {
   }
 }
 
+// Sync successful direct Firestore writes back to Google Sheets
+async function syncWriteToSheets(action, payload) {
+  const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || '';
+  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('placeholder')) return;
+
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action, ...payload })
+    });
+    if (!res.ok) {
+      console.warn('Sheets async sync responded with error:', res.statusText);
+    }
+  } catch (err) {
+    console.error('Failed to sync write to Google Sheets:', err);
+  }
+}
+
 // Direct write to Firestore for master tables (Firebase is source of truth)
 async function writeToFirestore(action, payload) {
   if (!db) return { success: false, error: 'Database not initialized' };
@@ -304,6 +323,13 @@ async function writeToFirestore(action, payload) {
       case 'updateSettings': {
         await setDoc(doc(db, 'settings', 'general'), payload);
         return { success: true, message: 'Settings updated successfully' };
+      }
+      case 'deleteFarmer': {
+        const farmerId = payload.farmer_id;
+        if (farmerId) {
+          await deleteDoc(doc(db, 'farmers', farmerId));
+        }
+        return { success: true, message: 'Farmer deleted successfully' };
       }
       default:
         return { success: false, message: `Write action ${action} not supported` };
@@ -455,7 +481,7 @@ export async function callAPI(action, payload = {}) {
   let response;
 
   const firestoreDirectActions = [
-    'registerFarmer', 'getFarmerList',
+    'registerFarmer', 'deleteFarmer', 'getFarmerList',
     'addCustomer', 'getCustomerList',
     'addProduct', 'updateProduct', 'getProductList',
     'getSettings', 'updateSettings'
@@ -509,8 +535,16 @@ export async function callAPI(action, payload = {}) {
     }
   }
 
-  // Sync writes to Firestore backup
+  // Sync writes to Firestore backup and Google Sheets
   if (response && response.success) {
+    if (firestoreDirectActions.includes(action) && !action.startsWith('get') && !IS_MOCK_MODE) {
+      // Async sync direct Firestore writes to Google Sheets
+      const syncPayload = response.data || payload;
+      syncWriteToSheets(action, syncPayload).catch(err => {
+        console.error('Google Sheets async write sync failed:', err);
+      });
+    }
+
     syncWriteToFirestore(action, response, payload).catch(err => {
       console.error('Firestore async write backup failed:', err);
     });
@@ -570,6 +604,13 @@ function handleMockAPI(action, payload) {
 
     case 'getFarmerList':
       return { success: true, data: getMockData('GAUDAI_FARMERS') };
+
+    case 'deleteFarmer': {
+      farmers = getMockData('GAUDAI_FARMERS');
+      const filteredFarmers = farmers.filter(f => f.farmer_id !== payload.farmer_id);
+      setMockData('GAUDAI_FARMERS', filteredFarmers);
+      return { success: true, message: 'Farmer deleted successfully' };
+    }
 
     case 'addMilkCollection': {
       collections = getMockData('GAUDAI_COLLECTIONS');
@@ -878,6 +919,21 @@ function handleMockAPI(action, payload) {
     case 'updateSettings':
       localStorage.setItem('GAUDAI_SETTINGS', JSON.stringify(payload));
       return { success: true, message: 'Settings updated successfully' };
+
+    case 'getSpreadsheetTabUrl': {
+      const type = payload.type;
+      settings = JSON.parse(localStorage.getItem('GAUDAI_SETTINGS')) || { baseRate: 8.5, businessName: 'Gaudai AI Dairy' };
+      const baseProps = {
+        collection: settings.sheetsIdCollection || 'mock_collection_id',
+        customer: settings.sheetsIdCustomer || 'mock_customer_id',
+        expense: settings.sheetsIdExpense || 'mock_expense_id'
+      };
+      const spreadsheetId = baseProps[type] || 'mock_id';
+      return {
+        success: true,
+        url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=mock_tab_gid`
+      };
+    }
 
     default:
       return { success: false, message: `Action ${action} not supported in mock mode` };

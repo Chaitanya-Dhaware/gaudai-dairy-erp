@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
-import { Database, MessageSquare, ShieldCheck, Download } from 'lucide-react';
+import { Database, MessageSquare, ShieldCheck, Download, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function Settings() {
@@ -15,6 +15,7 @@ export function Settings() {
     collections,
     sales,
     expenses,
+    clearAllTransactions,
     loading
   } = useAppStore();
 
@@ -112,6 +113,26 @@ export function Settings() {
     document.body.removeChild(link);
   };
 
+  const handleClearDatabase = async () => {
+    const confirmMessage = isMarathi
+      ? 'तुम्हाला खात्री आहे का की तुम्हाला सर्व व्यवहार हटवायचे आहेत? हा बदल पूर्ववत करता येणार नाही.'
+      : 'Are you absolutely sure you want to delete all transactions and reset all dues to zero? This action CANNOT be undone.';
+      
+    if (window.confirm(confirmMessage)) {
+      try {
+        const success = await clearAllTransactions();
+        if (success) {
+          toast.success(isMarathi ? 'व्यवहार यशस्वीरीत्या हटवले गेले!' : 'All transactions cleared and dues reset successfully!');
+        } else {
+          toast.error(isMarathi ? 'डेटाबेस साफ करण्यात अडचण आली' : 'Failed to clear database');
+        }
+      } catch (err) {
+        console.error(err);
+        toast.error('Error: ' + err.message);
+      }
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 font-body">
       
@@ -155,6 +176,16 @@ export function Settings() {
         >
           <Download className="w-4 h-4" />
           <span>CSV Export</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('danger')}
+          className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+            activeSubTab === 'danger' ? 'bg-danger/10 text-danger border-l-4 border-danger pl-3' : 'text-textSecondary hover:bg-black/[0.02]'
+          }`}
+        >
+          <Trash2 className="w-4 h-4 text-danger" />
+          <span className="text-danger">Danger Zone</span>
         </button>
       </div>
 
@@ -496,6 +527,47 @@ export function Settings() {
                   <p className="text-[10px] text-textSecondary mt-1">Export daily business operational outlays ({expenses.length} records)</p>
                 </div>
                 <Download className="w-5 h-5 text-primary" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeSubTab === 'danger' && (
+          <div className="bg-white rounded-2xl p-6 sm:p-8 border border-danger/20 shadow-subtle space-y-6">
+            <h3 className="text-lg font-bold font-head text-danger border-b border-black/[0.04] pb-4 flex items-center space-x-2">
+              <Trash2 className="w-5 h-5 text-danger" />
+              <span>{isMarathi ? 'डेटाबेस रीसेट / Reset Database' : 'Database Reset & Clean'}</span>
+            </h3>
+
+            <p className="text-xs text-textSecondary leading-relaxed">
+              {isMarathi
+                ? 'खबरदारी: ही क्रिया सर्व व्यवहार (दूध संकलन, विक्री बिले, खर्च आणि पेमेंट) कायमची हटवेल आणि शेतकरी/ग्राहकांची थकबाकी शून्य (0) करेल. हे केवळ नवीन हंगाम/वापरासाठी डेटाबेस स्वच्छ करण्यासाठी वापरा.'
+                : 'Caution: This action will permanently delete all transactions (milk collections, sales invoices, payment logs, and expenses) and reset all farmer/customer outstanding dues to zero. Registered farmers, customers, products, and system settings will be preserved.'}
+            </p>
+
+            <div className="bg-danger/5 border border-danger/10 rounded-xl p-4">
+              <h4 className="text-xs font-bold text-danger uppercase tracking-wider mb-2">
+                {isMarathi ? 'खालील डेटा नष्ट होईल:' : 'The following data will be cleared:'}
+              </h4>
+              <ul className="list-disc list-inside text-xs text-textSecondary space-y-1">
+                <li>{isMarathi ? 'सर्व दूध संकलन नोंदी (Milk Collections)' : 'All Milk Collection records'}</li>
+                <li>{isMarathi ? 'सर्व विक्री बिले आणि खरेदी नोंदी (Sales)' : 'All Sales invoices'}</li>
+                <li>{isMarathi ? 'सर्व पेमेंट इतिहास नोंदी (Payments)' : 'All Payment history logs'}</li>
+                <li>{isMarathi ? 'सर्व खर्च नोंदी (Expenses)' : 'All Expense entries'}</li>
+                <li>{isMarathi ? 'सर्व दैनिक पत्रके (Daily tabs in Google Sheets)' : 'All daily sheet tabs in Google Sheets'}</li>
+                <li>{isMarathi ? 'सर्व शेतकरी आणि ग्राहकांची थकीत रक्कम ० वर रीसेट केली जाईल' : 'All Farmer & Customer dues will be reset to ₹0'}</li>
+              </ul>
+            </div>
+
+            <div className="flex justify-end pt-4">
+              <button
+                type="button"
+                onClick={handleClearDatabase}
+                disabled={loading}
+                className="px-6 py-3 bg-danger text-white text-sm font-semibold rounded-xl hover:bg-danger/90 transition-all cursor-pointer flex items-center space-x-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isMarathi ? 'सर्व व्यवहार हटवा' : 'Delete All Transactions'}</span>
               </button>
             </div>
           </div>

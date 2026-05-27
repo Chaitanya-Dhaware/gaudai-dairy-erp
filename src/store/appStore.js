@@ -3,7 +3,7 @@ import { callAPI, readFromFirestore } from '../utils/api';
 import toast from 'react-hot-toast';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from '../utils/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, updateDoc } from 'firebase/firestore';
 
 export const useAppStore = create((set, get) => ({
   // Authentication & Users
@@ -112,29 +112,35 @@ export const useAppStore = create((set, get) => ({
           readFromFirestore('getExpenses')
         ]).catch(() => [null, null, null, null, null, null]);
 
-        const hasFirestoreData = 
-          (backupFarmers && backupFarmers.success && backupFarmers.data.length > 0) ||
-          (backupCollections && backupCollections.success && backupCollections.data.length > 0) ||
-          (backupCustomers && backupCustomers.success && backupCustomers.data.length > 0) ||
-          (backupSales && backupSales.success && backupSales.data.length > 0) ||
-          (backupExpenses && backupExpenses.success && backupExpenses.data.length > 0);
+        const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
+        const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
 
-        const hasSheetsData = 
-          (d.farmers && d.farmers.length > 0) ||
-          (d.collections && d.collections.length > 0) ||
-          (d.sales && d.sales.length > 0) ||
-          (d.expenses && d.expenses.length > 0);
+        // Check if there are any missing entries in Sheets compared to Firestore
+        const missingFarmers = isMockMode ? [] : (backupFarmers?.data || []).filter(bf => !d.farmers.some(sf => sf.farmer_id === bf.farmer_id));
+        const missingCollections = isMockMode ? [] : (backupCollections?.data || []).filter(bc => !d.collections.some(sc => sc.entry_id === bc.entry_id));
+        const missingCustomers = isMockMode ? [] : (backupCustomers?.data || []).filter(bc => !d.customers.some(sc => sc.customer_id === bc.customer_id));
+        const missingProducts = isMockMode ? [] : (backupProducts?.data || []).filter(bp => !d.products.some(sp => sp.product_id === bp.product_id));
+        const missingSales = isMockMode ? [] : (backupSales?.data || []).filter(bs => !d.sales.some(ss => ss.bill_id === bs.bill_id));
+        const missingExpenses = isMockMode ? [] : (backupExpenses?.data || []).filter(be => !d.expenses.some(se => se.expense_id === be.expense_id));
 
-        if (hasFirestoreData && !hasSheetsData) {
+        const needsSync = 
+          missingFarmers.length > 0 ||
+          missingCollections.length > 0 ||
+          missingCustomers.length > 0 ||
+          missingProducts.length > 0 ||
+          missingSales.length > 0 ||
+          missingExpenses.length > 0;
+
+        if (needsSync) {
           const isMarathi = localStorage.getItem('i18nextLng') === 'mr';
           toast.loading(isMarathi ? 'डेटा गुगल शीटमध्ये सिंक करत आहे...' : 'Syncing backup data to Google Sheets...');
           await callAPI('importBackupData', {
-            farmers: backupFarmers && backupFarmers.success ? backupFarmers.data : [],
-            collections: backupCollections && backupCollections.success ? backupCollections.data : [],
-            customers: backupCustomers && backupCustomers.success ? backupCustomers.data : [],
-            products: backupProducts && backupProducts.success ? backupProducts.data : [],
-            sales: backupSales && backupSales.success ? backupSales.data : [],
-            expenses: backupExpenses && backupExpenses.success ? backupExpenses.data : [],
+            farmers: missingFarmers,
+            collections: missingCollections,
+            customers: missingCustomers,
+            products: missingProducts,
+            sales: missingSales,
+            expenses: missingExpenses,
             sheetsIdCollection: settings.sheetsIdCollection,
             sheetsIdCustomer: settings.sheetsIdCustomer,
             sheetsIdExpense: settings.sheetsIdExpense
@@ -152,9 +158,9 @@ export const useAppStore = create((set, get) => ({
           if (reBatchRes && reBatchRes.success && reBatchRes.data) {
             const rd = reBatchRes.data;
             set({
-              farmers: rd.farmers || [],
-              products: rd.products || [],
-              customers: rd.customers || [],
+              farmers: (!isMockMode && backupFarmers && backupFarmers.success && backupFarmers.data.length > 0) ? backupFarmers.data : (rd.farmers || []),
+              products: (!isMockMode && backupProducts && backupProducts.success && backupProducts.data.length > 0) ? backupProducts.data : (rd.products || []),
+              customers: (!isMockMode && backupCustomers && backupCustomers.success && backupCustomers.data.length > 0) ? backupCustomers.data : (rd.customers || []),
               collections: rd.collections || [],
               sales: rd.sales || [],
               expenses: rd.expenses || [],
@@ -165,10 +171,14 @@ export const useAppStore = create((set, get) => ({
           }
         }
 
+        const farmersData = (!isMockMode && backupFarmers && backupFarmers.success && backupFarmers.data.length > 0) ? backupFarmers.data : (d.farmers || []);
+        const productsData = (!isMockMode && backupProducts && backupProducts.success && backupProducts.data.length > 0) ? backupProducts.data : (d.products || []);
+        const customersData = (!isMockMode && backupCustomers && backupCustomers.success && backupCustomers.data.length > 0) ? backupCustomers.data : (d.customers || []);
+
         set({
-          farmers: d.farmers || [],
-          products: d.products || [],
-          customers: d.customers || [],
+          farmers: farmersData,
+          products: productsData,
+          customers: customersData,
           collections: d.collections || [],
           sales: d.sales || [],
           expenses: d.expenses || [],
@@ -525,6 +535,26 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  deleteFarmer: async (farmerId) => {
+    set({ loading: true });
+    try {
+      const settings = get().settings;
+      const res = await callAPI('deleteFarmer', { farmer_id: farmerId, sheetsIdCollection: settings.sheetsIdCollection });
+      if (res.success) {
+        toast.success(localStorage.getItem('i18nextLng') === 'mr' ? 'शेतकरी हटवला!' : 'Farmer deleted!');
+        const updatedFarmers = await callAPI('getFarmerList');
+        if (updatedFarmers.success) set({ farmers: updatedFarmers.data });
+        return true;
+      }
+      return false;
+    } catch {
+      toast.error('शेतकरी हटवण्यास अडचण / Delete error');
+      return false;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
   // Settings update
   saveSettings: async (newSettings) => {
     set({ loading: true });
@@ -538,6 +568,67 @@ export const useAppStore = create((set, get) => ({
       return false;
     } catch {
       toast.error('सेटिंग्ज जतन करता आल्या नाहीत / Settings error');
+      return false;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  clearAllTransactions: async () => {
+    set({ loading: true });
+    try {
+      const settings = get().settings;
+      const res = await callAPI('clearTransactions', {
+        sheetsIdCollection: settings.sheetsIdCollection,
+        sheetsIdCustomer: settings.sheetsIdCustomer,
+        sheetsIdExpense: settings.sheetsIdExpense
+      });
+
+      if (res && res.success) {
+        const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
+        const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
+
+        if (!isMockMode) {
+          const collectionsSnap = await getDocs(collection(db, 'collections'));
+          const salesSnap = await getDocs(collection(db, 'sales'));
+          const expensesSnap = await getDocs(collection(db, 'expenses'));
+
+          // Delete Firestore records
+          const deletePromises = [];
+          collectionsSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          salesSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          expensesSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+
+          // Reset dues in Firestore for farmers and customers
+          const farmersSnap = await getDocs(collection(db, 'farmers'));
+          farmersSnap.forEach(d => deletePromises.push(updateDoc(d.ref, { current_due: 0 })));
+
+          const customersSnap = await getDocs(collection(db, 'customers'));
+          customersSnap.forEach(d => deletePromises.push(updateDoc(d.ref, { current_due: 0 })));
+
+          await Promise.all(deletePromises);
+        } else {
+          // Mock mode local storage reset
+          localStorage.removeItem('GAUDAI_COLLECTIONS');
+          localStorage.removeItem('GAUDAI_SALES');
+          localStorage.removeItem('GAUDAI_EXPENSES');
+          localStorage.setItem('GAUDAI_COLLECTIONS', '[]');
+          localStorage.setItem('GAUDAI_SALES', '[]');
+          localStorage.setItem('GAUDAI_EXPENSES', '[]');
+
+          const mockFarmers = JSON.parse(localStorage.getItem('GAUDAI_FARMERS') || '[]').map(f => ({ ...f, current_due: 0 }));
+          const mockCustomers = JSON.parse(localStorage.getItem('GAUDAI_CUSTOMERS') || '[]').map(c => ({ ...c, current_due: 0 }));
+          localStorage.setItem('GAUDAI_FARMERS', JSON.stringify(mockFarmers));
+          localStorage.setItem('GAUDAI_CUSTOMERS', JSON.stringify(mockCustomers));
+        }
+
+        // Reload cache locally
+        await get().loadAllData();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('clearAllTransactions failed:', e);
       return false;
     } finally {
       set({ loading: false });
