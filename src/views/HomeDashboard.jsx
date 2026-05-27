@@ -259,11 +259,7 @@ export function HomeDashboard() {
             </div>
             {settings?.sheetsIdCollection ? (
               <a
-                href={
-                  isMockMode 
-                    ? `https://docs.google.com/spreadsheets/d/${settings.sheetsIdCollection}/edit` 
-                    : `${appScriptUrl}?action=openTab&type=collection&date=${selectedDate}`
-                }
+                href={`https://docs.google.com/spreadsheets/d/${settings.sheetsIdCollection}/edit`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
@@ -292,11 +288,7 @@ export function HomeDashboard() {
             </div>
             {settings?.sheetsIdCustomer ? (
               <a
-                href={
-                  isMockMode 
-                    ? `https://docs.google.com/spreadsheets/d/${settings.sheetsIdCustomer}/edit` 
-                    : `${appScriptUrl}?action=openTab&type=customer&date=${selectedDate}`
-                }
+                href={`https://docs.google.com/spreadsheets/d/${settings.sheetsIdCustomer}/edit`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
@@ -328,11 +320,7 @@ export function HomeDashboard() {
             </div>
             {settings?.sheetsIdExpense ? (
               <a
-                href={
-                  isMockMode 
-                    ? `https://docs.google.com/spreadsheets/d/${settings.sheetsIdExpense}/edit` 
-                    : `${appScriptUrl}?action=openTab&type=expense&date=${selectedDate}`
-                }
+                href={`https://docs.google.com/spreadsheets/d/${settings.sheetsIdExpense}/edit`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
