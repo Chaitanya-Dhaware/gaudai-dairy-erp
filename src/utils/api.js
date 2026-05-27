@@ -504,14 +504,20 @@ export async function callAPI(action, payload = {}) {
     }
   } else {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 seconds timeout
+
       const res = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         redirect: 'follow',
         // Using text/plain avoids the CORS preflight OPTIONS request
         // that Google Apps Script cannot handle. GAS still receives valid JSON.
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action, ...payload })
+        body: JSON.stringify({ action, ...payload }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         throw new Error(`Apps Script Error: ${res.statusText}`);
@@ -579,6 +585,17 @@ function handleMockAPI(action, payload) {
     }
     case 'clearTransactions': {
       return { success: true, message: 'Mock clear completed successfully' };
+    }
+    case 'getSpreadsheetTabUrl': {
+      const sheetId = payload.type === 'collection' 
+        ? getMockData('GAUDAI_SETTINGS').sheetsIdCollection 
+        : payload.type === 'customer' 
+          ? getMockData('GAUDAI_SETTINGS').sheetsIdCustomer 
+          : getMockData('GAUDAI_SETTINGS').sheetsIdExpense;
+      return { 
+        success: true, 
+        url: sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : '' 
+      };
     }
     // --- COLLECTION MANAGEMENT ---
     case 'registerFarmer': {
