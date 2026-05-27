@@ -577,6 +577,9 @@ function handleMockAPI(action, payload) {
     case 'importBackupData': {
       return { success: true, message: 'Mock backup imported successfully' };
     }
+    case 'clearTransactions': {
+      return { success: true, message: 'Mock clear completed successfully' };
+    }
     // --- COLLECTION MANAGEMENT ---
     case 'registerFarmer': {
       farmers = getMockData('GAUDAI_FARMERS');
