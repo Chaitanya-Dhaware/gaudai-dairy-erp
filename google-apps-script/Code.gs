@@ -94,32 +94,25 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'openTab') {
     try {
       var type = e.parameter.type;
-      var dateStr = e.parameter.date;
-      
       var spreadsheetId = "";
-      var headers = [];
-      var tabPrefix = "Daily_";
+      var tabName = "";
       
       if (type === 'collection') {
         spreadsheetId = CONFIG.COLLECTION_DB_ID;
-        headers = ["entry_id", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"];
+        tabName = "Milk_Collections";
       } else if (type === 'customer') {
         spreadsheetId = CONFIG.CUSTOMER_DB_ID;
-        headers = ["bill_id", "customer_id", "date", "total_amount", "paid_amount", "due_amount", "status", "timestamp"];
+        tabName = "Sales";
       } else if (type === 'expense') {
         spreadsheetId = CONFIG.EXPENSE_DB_ID;
-        headers = ["expense_id", "date", "reason", "amount", "category", "payment_method", "notes", "timestamp"];
+        tabName = "Expenses";
       }
       
-      if (spreadsheetId) {
+      if (spreadsheetId && tabName) {
         var ss = SpreadsheetApp.openById(spreadsheetId);
-        var dateStrFormatted = formatSheetDate(dateStr);
-        var tabName = tabPrefix + dateStrFormatted;
-        
         var sheet = ss.getSheetByName(tabName);
         if (!sheet) {
-          createSheetIfMissing(ss, tabName, headers);
-          sheet = ss.getSheetByName(tabName);
+          throw new Error("Sheet tab " + tabName + " not found.");
         }
         
         var sheetId = sheet.getSheetId();
@@ -227,7 +220,7 @@ function doGet(e) {
           '    <div class="spinner"></div>\n' +
           '    <h2>गूगल शीट उघडत आहे...</h2>\n' +
           '    <p style="margin-bottom: 8px; font-weight: 500;">Opening Google Sheet...</p>\n' +
-          '    <p>We are opening the sheet for <strong>' + dateStrFormatted + '</strong>. If it does not load automatically, click the button below.</p>\n' +
+          '    <p>We are opening the sheet <strong>' + tabName + '</strong>. If it does not load automatically, click the button below.</p>\n' +
           '    <a href="' + url + '" class="btn" target="_top">Open Spreadsheet</a>\n' +
           '  </div>\n' +
           '  <script>\n' +
@@ -896,19 +889,7 @@ function addMilkCollection(data) {
 
   colSheet.appendRow(rowData);
 
-  // Append to daily sheet
-  try {
-    var dateStrFormatted = formatSheetDate(data.date);
-    var dailySheetName = "Daily_" + dateStrFormatted;
-    var dailySheet = ss.getSheetByName(dailySheetName);
-    if (!dailySheet) {
-      createSheetIfMissing(ss, dailySheetName, ["farmer_name", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "time"]);
-      dailySheet = ss.getSheetByName(dailySheetName);
-    }
-    dailySheet.appendRow(rowData);
-  } catch(e) {
-    logErrorToSheets("Failed to write milk collection to daily sheet: " + e.toString());
-  }
+  // Consolidating all milk collections to Milk_Collections (Daily_ tab creation removed)
 
   // Update farmer current_due and payment_status
   var farmSheet = ss.getSheetByName("Farmers");
@@ -1189,19 +1170,7 @@ function addSale(data) {
 
   salesSheet.appendRow(rowData);
 
-  // Append to daily sheet
-  try {
-    var dateStrFormatted = formatSheetDate(data.date);
-    var dailySheetName = "Daily_" + dateStrFormatted;
-    var dailySheet = ss.getSheetByName(dailySheetName);
-    if (!dailySheet) {
-      createSheetIfMissing(ss, dailySheetName, ["bill_id", "customer_id", "date", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
-      dailySheet = ss.getSheetByName(dailySheetName);
-    }
-    dailySheet.appendRow(rowData);
-  } catch(e) {
-    logErrorToSheets("Failed to write sale to daily sheet: " + e.toString());
-  }
+  // Consolidating all sales to Sales (Daily_ tab creation removed)
 
   // Update customer current_due
   var custSheet = ss.getSheetByName("Customers");
@@ -1332,19 +1301,7 @@ function addExpense(data) {
   // 1. Append to main log
   mainSheet.appendRow(rowData);
 
-  // 2. Format sheet name e.g. "Daily_25_May_2026"
-  var dateStrFormatted = formatSheetDate(data.date);
-  var dailySheetName = "Daily_" + dateStrFormatted;
-  
-  // 3. Get or create daily sheet
-  var dailySheet = ss.getSheetByName(dailySheetName);
-  if (!dailySheet) {
-    createSheetIfMissing(ss, dailySheetName, ["expense_id", "date", "reason", "amount", "category", "payment_method", "notes", "timestamp"]);
-    dailySheet = ss.getSheetByName(dailySheetName);
-  }
-  
-  // 4. Append row to daily sheet
-  dailySheet.appendRow(rowData);
+  // Consolidating all expenses to Expenses (Daily_ tab creation removed)
 
   return { 
     success: true, 
@@ -1556,6 +1513,9 @@ function parseSafeFloat(val) {
 }
 
 function batchLoadData() {
+  // Automatically clean up existing daily tabs
+  cleanupAllDailySheets();
+
   var farmers = [];
   var collections = [];
   var products = [];
@@ -1670,19 +1630,7 @@ function importBackupData(data) {
             sheet.appendRow(rowData);
             existingIds.push(c.entry_id);
 
-            // Also write to daily sheet
-            try {
-              var dateStrFormatted = formatSheetDate(c.date);
-              var dailySheetName = "Daily_" + dateStrFormatted;
-              var dailySheet = ssCol.getSheetByName(dailySheetName);
-              if (!dailySheet) {
-                createSheetIfMissing(ssCol, dailySheetName, ["entry_id", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
-                dailySheet = ssCol.getSheetByName(dailySheetName);
-              }
-              dailySheet.appendRow(rowData);
-            } catch(e) {
-              logErrorToSheets("importBackupData failed to write collection to daily sheet: " + e.toString());
-            }
+            // Daily_ tab creation removed
           }
         });
       }
@@ -1754,19 +1702,7 @@ function importBackupData(data) {
             sheet.appendRow(rowData);
             existingIds.push(s.bill_id);
 
-            // Also write to daily sheet
-            try {
-              var dateStrFormatted = formatSheetDate(s.date);
-              var dailySheetName = "Daily_" + dateStrFormatted;
-              var dailySheet = ssCust.getSheetByName(dailySheetName);
-              if (!dailySheet) {
-                createSheetIfMissing(ssCust, dailySheetName, ["bill_id", "customer_id", "date", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
-                dailySheet = ssCust.getSheetByName(dailySheetName);
-              }
-              dailySheet.appendRow(rowData);
-            } catch(e) {
-              logErrorToSheets("importBackupData failed to write sale to daily sheet: " + e.toString());
-            }
+            // Daily_ tab creation removed
           }
         });
       }
@@ -1797,19 +1733,7 @@ function importBackupData(data) {
             sheet.appendRow(rowData);
             existingIds.push(exp.expense_id);
 
-            // Also write to daily sheet
-            try {
-              var dateStrFormatted = formatSheetDate(exp.date);
-              var dailySheetName = "Daily_" + dateStrFormatted;
-              var dailySheet = ssExp.getSheetByName(dailySheetName);
-              if (!dailySheet) {
-                createSheetIfMissing(ssExp, dailySheetName, ["expense_id", "date", "reason", "amount", "category", "payment_method", "notes", "timestamp"]);
-                dailySheet = ssExp.getSheetByName(dailySheetName);
-              }
-              dailySheet.appendRow(rowData);
-            } catch(e) {
-              logErrorToSheets("importBackupData failed to write expense to daily sheet: " + e.toString());
-            }
+            // Daily_ tab creation removed
           }
         });
       }
@@ -1823,21 +1747,19 @@ function importBackupData(data) {
 
 function getSpreadsheetTabUrl(requestData) {
   var type = requestData.type; // 'collection', 'customer', 'expense'
-  var dateStr = requestData.date; // YYYY-MM-DD
   
   var spreadsheetId = "";
-  var headers = [];
-  var tabPrefix = "Daily_";
+  var tabName = "";
   
   if (type === 'collection') {
     spreadsheetId = CONFIG.COLLECTION_DB_ID;
-    headers = ["entry_id", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"];
+    tabName = "Milk_Collections";
   } else if (type === 'customer') {
     spreadsheetId = CONFIG.CUSTOMER_DB_ID;
-    headers = ["bill_id", "customer_id", "date", "total_amount", "paid_amount", "due_amount", "status", "timestamp"];
+    tabName = "Sales";
   } else if (type === 'expense') {
     spreadsheetId = CONFIG.EXPENSE_DB_ID;
-    headers = ["expense_id", "date", "reason", "amount", "category", "payment_method", "notes", "timestamp"];
+    tabName = "Expenses";
   } else {
     throw new Error("Invalid spreadsheet type: " + type);
   }
@@ -1847,13 +1769,9 @@ function getSpreadsheetTabUrl(requestData) {
   }
   
   var ss = SpreadsheetApp.openById(spreadsheetId);
-  var dateStrFormatted = formatSheetDate(dateStr);
-  var tabName = tabPrefix + dateStrFormatted;
-  
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) {
-    createSheetIfMissing(ss, tabName, headers);
-    sheet = ss.getSheetByName(tabName);
+    throw new Error("Sheet tab " + tabName + " not found.");
   }
   
   var sheetId = sheet.getSheetId();
@@ -1947,4 +1865,24 @@ function deleteDailySheets(ss) {
       ss.deleteSheet(sheet);
     }
   });
+}
+
+function cleanupAllDailySheets() {
+  try {
+    loadConfigFromProperties();
+    if (CONFIG.COLLECTION_DB_ID) {
+      var ssCol = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+      deleteDailySheets(ssCol);
+    }
+    if (CONFIG.CUSTOMER_DB_ID) {
+      var ssCust = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
+      deleteDailySheets(ssCust);
+    }
+    if (CONFIG.EXPENSE_DB_ID) {
+      var ssExp = SpreadsheetApp.openById(CONFIG.EXPENSE_DB_ID);
+      deleteDailySheets(ssExp);
+    }
+  } catch(e) {
+    logErrorToSheets("cleanupAllDailySheets error: " + e.toString());
+  }
 }

@@ -9,20 +9,8 @@ export function HomeDashboard() {
   const { setWorkspace, todaySummary, user, settings } = useAppStore();
   const isMarathi = i18n.language === 'mr';
 
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-
   const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
   const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
-
-  const formatSheetDate = (dateStr) => {
-    if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    const year = parts[0];
-    const monthNum = parseInt(parts[1], 10);
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const monthName = months[monthNum - 1] || "Jan";
-    return `${parts[2]}_${monthName}_${year}`;
-  };
 
   const formatCurrency = (val) => {
     return new Intl.NumberFormat(isMarathi ? 'mr-IN' : 'en-IN', {
@@ -226,21 +214,9 @@ export function HomeDashboard() {
             </h3>
             <p className="text-textSecondary text-[11px] mt-1">
               {isMarathi 
-                ? 'निवडलेल्या तारखेनुसार तुमच्या गूगल ड्राईव्हमधील संबंधित डेटा शीट उघडा.' 
-                : 'Directly open database spreadsheets and daily journals for your selected date.'}
+                ? 'तुमच्या गूगल ड्राईव्हमधील संबंधित डेटा शीट्स थेट उघडा.' 
+                : 'Directly open the database spreadsheets and registers in Google Drive.'}
             </p>
-          </div>
-          
-          <div className="flex items-center space-x-3 w-full sm:w-auto">
-            <label className="text-xs font-bold text-textSecondary uppercase tracking-wider whitespace-nowrap">
-              {isMarathi ? 'तारीख निवडा:' : 'Select Date:'}
-            </label>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="px-3 py-2 border border-black/[0.08] rounded-xl text-xs bg-background font-mono font-bold focus:outline-none focus:border-primary"
-            />
           </div>
         </div>
 
@@ -251,11 +227,14 @@ export function HomeDashboard() {
               <h4 className="text-xs font-bold text-textPrimary uppercase tracking-wider">
                 {isMarathi ? '🥛 दूध संकलन रजिस्टर' : '🥛 Milk Collections Log'}
               </h4>
-              <p className="text-[10px] text-textSecondary leading-relaxed">
+              <p className="text-[10px] text-textSecondary leading-relaxed mb-1">
                 {isMarathi 
                   ? 'शेतकरी दूध संकलन नोंदी आणि प्रलंबित देयके पाहण्यासाठी मुख्य शीट उघडा.' 
                   : 'Open the collection spreadsheet to review all farmer milk entries and dues.'}
               </p>
+              <div className="bg-primary/5 border border-primary/10 rounded-lg p-2 font-mono text-[9px] text-primary">
+                {isMarathi ? 'टॅबचे नाव:' : 'Target Tab Name:'} <strong className="underline">Milk_Collections</strong>
+              </div>
             </div>
             {settings?.sheetsIdCollection ? (
               <a
@@ -280,11 +259,14 @@ export function HomeDashboard() {
               <h4 className="text-xs font-bold text-textPrimary uppercase tracking-wider">
                 {isMarathi ? '👥 ग्राहक आणि विक्री रजिस्टर' : '👥 Customers & Sales Log'}
               </h4>
-              <p className="text-[10px] text-textSecondary leading-relaxed">
+              <p className="text-[10px] text-textSecondary leading-relaxed mb-1">
                 {isMarathi 
                   ? 'ग्राहकांची बिले, विक्री इतिहास आणि दुकानदारांची थकबाकी पाहण्यासाठी मुख्य शीट उघडा.' 
                   : 'Open the customer sales spreadsheet to manage store balances and invoices.'}
               </p>
+              <div className="bg-primary/5 border border-primary/10 rounded-lg p-2 font-mono text-[9px] text-primary">
+                {isMarathi ? 'टॅबचे नाव:' : 'Target Tab Name:'} <strong className="underline">Sales</strong>
+              </div>
             </div>
             {settings?.sheetsIdCustomer ? (
               <a
@@ -307,15 +289,15 @@ export function HomeDashboard() {
           <div className="p-5 border border-black/[0.06] rounded-2xl bg-background flex flex-col justify-between space-y-4">
             <div className="space-y-2">
               <h4 className="text-xs font-bold text-textPrimary uppercase tracking-wider">
-                {isMarathi ? '💸 दैनिक खर्च रजिस्टर' : '💸 Daily Expenses Log'}
+                {isMarathi ? '💸 खर्च रजिस्टर' : '💸 Expenses Log'}
               </h4>
-              <p className="text-[10px] text-textSecondary leading-relaxed">
+              <p className="text-[10px] text-textSecondary leading-relaxed mb-1">
                 {isMarathi 
-                  ? `खर्च मुख्य रजिस्टरमध्ये आणि दैनिक विभागात जतन केले जातात.` 
-                  : `Expenses are archived by date. Open sheet and check the bottom tab bar.`}
+                  ? `सर्व प्रकारच्या व्यावसायिक खर्चाची नोंद पाहण्यासाठी मुख्य शीट उघडा.` 
+                  : `Open the expenses spreadsheet to review operational outlays.`}
               </p>
-              <div className="bg-primary/5 border border-primary/10 rounded-lg p-2 font-mono text-[9px] text-primary mt-1">
-                {isMarathi ? 'खर्च टॅबचे नाव:' : 'Target Tab Name:'} <strong className="underline">Daily_{formatSheetDate(selectedDate)}</strong>
+              <div className="bg-primary/5 border border-primary/10 rounded-lg p-2 font-mono text-[9px] text-primary">
+                {isMarathi ? 'टॅबचे नाव:' : 'Target Tab Name:'} <strong className="underline">Expenses</strong>
               </div>
             </div>
             {settings?.sheetsIdExpense ? (
