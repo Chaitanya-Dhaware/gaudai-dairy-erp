@@ -556,8 +556,8 @@ export function Settings() {
 
             <p className="text-xs text-textSecondary leading-relaxed">
               {isMarathi
-                ? 'खबरदारी: ही क्रिया सर्व व्यवहार (दूध संकलन, विक्री बिले, खर्च आणि पेमेंट) कायमची हटवेल आणि शेतकरी/ग्राहकांची थकबाकी शून्य (0) करेल. हे केवळ नवीन हंगाम/वापरासाठी डेटाबेस स्वच्छ करण्यासाठी वापरा.'
-                : 'Caution: This action will permanently delete all transactions (milk collections, sales invoices, payment logs, and expenses) and reset all farmer/customer outstanding dues to zero. Registered farmers, customers, products, and system settings will be preserved.'}
+                ? 'खबरदारी: ही क्रिया सर्व डेटा (शेतकरी, ग्राहक, उत्पादने आणि सर्व व्यवहार) कायमचे हटवेल आणि डेटाबेस पूर्णपणे स्वच्छ करेल. हे केवळ नवीन सुरुवात करण्यासाठी वापरा.'
+                : 'Caution: This action will permanently delete all database content, including registered farmers, customers, products, and all transaction logs. Use this to start completely fresh from scratch.'}
             </p>
 
             <div className="bg-danger/5 border border-danger/10 rounded-xl p-4">
@@ -565,12 +565,13 @@ export function Settings() {
                 {isMarathi ? 'खालील डेटा नष्ट होईल:' : 'The following data will be cleared:'}
               </h4>
               <ul className="list-disc list-inside text-xs text-textSecondary space-y-1">
+                <li>{isMarathi ? 'सर्व शेतकरी नोंदणी नोंदी (Farmers Directory)' : 'All registered farmers database'}</li>
+                <li>{isMarathi ? 'सर्व ग्राहक प्रोफाईल्स (Customers Directory)' : 'All registered customer profiles'}</li>
+                <li>{isMarathi ? 'सर्व उत्पादने (Products seeded to defaults)' : 'All products (re-seeded to default list)'}</li>
                 <li>{isMarathi ? 'सर्व दूध संकलन नोंदी (Milk Collections)' : 'All Milk Collection records'}</li>
                 <li>{isMarathi ? 'सर्व विक्री बिले आणि खरेदी नोंदी (Sales)' : 'All Sales invoices'}</li>
                 <li>{isMarathi ? 'सर्व पेमेंट इतिहास नोंदी (Payments)' : 'All Payment history logs'}</li>
                 <li>{isMarathi ? 'सर्व खर्च नोंदी (Expenses)' : 'All Expense entries'}</li>
-                <li>{isMarathi ? 'सर्व दैनिक पत्रके (Daily tabs in Google Sheets)' : 'All daily sheet tabs in Google Sheets'}</li>
-                <li>{isMarathi ? 'सर्व शेतकरी आणि ग्राहकांची थकीत रक्कम ० वर रीसेट केली जाईल' : 'All Farmer & Customer dues will be reset to ₹0'}</li>
               </ul>
             </div>
 
@@ -582,7 +583,7 @@ export function Settings() {
                 className="px-6 py-3 bg-danger text-white text-sm font-semibold rounded-xl hover:bg-danger/90 transition-all cursor-pointer flex items-center space-x-2"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>{isMarathi ? 'सर्व व्यवहार हटवा' : 'Delete All Transactions'}</span>
+                <span>{isMarathi ? 'डेटाबेस आणि सर्व माहिती हटवा' : 'Reset Database & Clear All Data'}</span>
               </button>
             </div>
           </div>
