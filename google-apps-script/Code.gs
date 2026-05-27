@@ -485,8 +485,8 @@ function autoSetupSheets() {
     try {
       var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
       createSheetIfMissing(ss, "Farmers", ["farmer_id", "name", "mobile", "address", "milk_type", "current_due", "created_at"]);
-      createSheetIfMissing(ss, "Milk_Collections", ["entry_id", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
-      createSheetIfMissing(ss, "Payments", ["payment_id", "farmer_id", "amount", "date", "notes", "timestamp"]);
+      createSheetIfMissing(ss, "Milk_Collections", ["farmer_name", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
+      createSheetIfMissing(ss, "Payments", ["payment_id", "farmer_id", "farmer_name", "amount", "date", "notes", "timestamp"]);
       
       var defaultSheet = ss.getSheetByName("Sheet1");
       if (defaultSheet && ss.getSheets().length > 1) {
@@ -648,6 +648,44 @@ function reformatMilkCollections(ss) {
     }
   } catch(e) {
     logErrorToSheets("reformatMilkCollections error: " + e.toString());
+  }
+}
+
+function reformatPayments(ss) {
+  try {
+    var paySheet = ss.getSheetByName("Payments");
+    if (!paySheet) return;
+    var lastRow = paySheet.getLastRow();
+    if (lastRow < 1) return;
+    
+    var header = paySheet.getRange(1, 1, 1, paySheet.getLastColumn()).getValues()[0];
+    if (header.indexOf("farmer_name") !== -1) return; // already reformatted
+    
+    // Insert a new column C for farmer_name
+    paySheet.insertColumnAfter(2);
+    paySheet.getRange(1, 3).setValue("farmer_name").setFontWeight("bold");
+    
+    if (lastRow <= 1) return;
+    
+    var farmersSheet = ss.getSheetByName("Farmers");
+    var farmerMap = {};
+    if (farmersSheet) {
+      var fd = farmersSheet.getDataRange().getValues();
+      for (var f = 1; f < fd.length; f++) {
+        farmerMap[fd[f][0]] = fd[f][1] || fd[f][0];
+      }
+    }
+    
+    // Fill in farmer_name for all rows
+    var rowsRange = paySheet.getRange(2, 1, lastRow - 1, 3);
+    var rows = rowsRange.getValues();
+    for (var r = 0; r < rows.length; r++) {
+      var fid = String(rows[r][1] || "");
+      rows[r][2] = farmerMap[fid] || fid;
+    }
+    rowsRange.setValues(rows);
+  } catch(e) {
+    logErrorToSheets("reformatPayments error: " + e.toString());
   }
 }
 
@@ -911,6 +949,7 @@ function addMilkCollection(data) {
         paySheet.appendRow([
           "PAY-" + Date.now(),
           data.farmer_id,
+          farmerName,
           paidVal,
           data.date || new Date().toISOString().split('T')[0],
           "Initial payment from " + farmerName + " on " + data.date,
@@ -952,6 +991,7 @@ function getCollectionEntries() {
   var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
   // Migrate existing data to new format (farmer_name col A, time col M)
   reformatMilkCollections(ss);
+  reformatPayments(ss);
   var sheet = ss.getSheetByName("Milk_Collections");
   var values = sheet.getDataRange().getValues();
   var list = [];
@@ -1029,12 +1069,14 @@ function markFarmerPaid(entryId, amountCleared) {
     try {
       var paySheet = ss.getSheetByName("Payments");
       if (paySheet) {
+        var farmerName = getFarmerNameById(ss, farmerId);
         paySheet.appendRow([
           "PAY-" + Date.now(),
           farmerId,
+          farmerName,
           amtVal,
           new Date().toISOString().split('T')[0],
-          "Cleared due for farmer " + farmerId,
+          "Cleared due for farmer " + farmerName,
           Utilities.formatDate(new Date(), "Asia/Kolkata", "hh:mm a")
         ]);
       }
