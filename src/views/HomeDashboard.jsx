@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
 import { Droplet, Users, Receipt, PieChart, TrendingUp, TrendingDown, Clock, ShieldCheck, FileSpreadsheet, ExternalLink, Loader2 } from 'lucide-react';
@@ -12,13 +12,50 @@ export function HomeDashboard() {
 
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const [resolvingSheet, setResolvingSheet] = useState({
+  const [tabUrls, setTabUrls] = useState({
+    collection: '',
+    customer: '',
+    expense: ''
+  });
+  const [resolvingUrls, setResolvingUrls] = useState({
     collection: false,
     customer: false,
     expense: false
   });
 
-  const handleOpenSpreadsheet = async (type) => {
+  useEffect(() => {
+    const resolveUrls = async () => {
+      const types = ['collection', 'customer', 'expense'];
+      
+      types.forEach(type => {
+        setResolvingUrls(prev => ({ ...prev, [type]: true }));
+      });
+
+      try {
+        const [collectionRes, customerRes, expenseRes] = await Promise.all([
+          callAPI('getSpreadsheetTabUrl', { type: 'collection', date: selectedDate }),
+          callAPI('getSpreadsheetTabUrl', { type: 'customer', date: selectedDate }),
+          callAPI('getSpreadsheetTabUrl', { type: 'expense', date: selectedDate })
+        ]).catch(() => [null, null, null]);
+
+        setTabUrls({
+          collection: collectionRes?.success ? collectionRes.url : '',
+          customer: customerRes?.success ? customerRes.url : '',
+          expense: expenseRes?.success ? expenseRes.url : ''
+        });
+      } catch (e) {
+        console.error("Error resolving spreadsheet daily tab URLs:", e);
+      } finally {
+        types.forEach(type => {
+          setResolvingUrls(prev => ({ ...prev, [type]: false }));
+        });
+      }
+    };
+
+    resolveUrls();
+  }, [selectedDate, settings]);
+
+  const handleOpenSpreadsheet = (type) => {
     const sheetId = type === 'collection' 
       ? settings?.sheetsIdCollection 
       : type === 'customer' 
@@ -31,21 +68,9 @@ export function HomeDashboard() {
     }
 
     const baseUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+    const targetUrl = tabUrls[type] || baseUrl;
     
-    // Open base spreadsheet in new tab immediately to bypass popup blockers
-    const newTab = window.open(baseUrl, '_blank');
-    
-    setResolvingSheet(prev => ({ ...prev, [type]: true }));
-    try {
-      const res = await callAPI('getSpreadsheetTabUrl', { type, date: selectedDate });
-      if (res && res.success && res.url) {
-        newTab.location.href = res.url;
-      }
-    } catch (err) {
-      console.error("Error resolving spreadsheet tab:", err);
-    } finally {
-      setResolvingSheet(prev => ({ ...prev, [type]: false }));
-    }
+    window.open(targetUrl, '_blank');
   };
 
   const formatSheetDate = (dateStr) => {
@@ -294,13 +319,12 @@ export function HomeDashboard() {
             {settings?.sheetsIdCollection ? (
               <button
                 onClick={() => handleOpenSpreadsheet('collection')}
-                disabled={resolvingSheet.collection}
-                className="w-full py-2.5 bg-primary hover:bg-primary-light disabled:bg-primary/50 text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer disabled:cursor-not-allowed"
+                className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
               >
-                {resolvingSheet.collection ? (
+                {resolvingUrls.collection ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>{isMarathi ? 'शीट उघडत आहे...' : 'Opening Spreadsheet...'}</span>
+                    <span>{isMarathi ? 'शीट लिंक शोधत आहे...' : 'Resolving Tab Link...'}</span>
                   </>
                 ) : (
                   <>
@@ -309,6 +333,7 @@ export function HomeDashboard() {
                   </>
                 )}
               </button>
+
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
@@ -331,13 +356,12 @@ export function HomeDashboard() {
             {settings?.sheetsIdCustomer ? (
               <button
                 onClick={() => handleOpenSpreadsheet('customer')}
-                disabled={resolvingSheet.customer}
-                className="w-full py-2.5 bg-primary hover:bg-primary-light disabled:bg-primary/50 text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer disabled:cursor-not-allowed"
+                className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
               >
-                {resolvingSheet.customer ? (
+                {resolvingUrls.customer ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>{isMarathi ? 'शीट उघडत आहे...' : 'Opening Spreadsheet...'}</span>
+                    <span>{isMarathi ? 'शीट लिंक शोधत आहे...' : 'Resolving Tab Link...'}</span>
                   </>
                 ) : (
                   <>
@@ -346,6 +370,7 @@ export function HomeDashboard() {
                   </>
                 )}
               </button>
+
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
@@ -371,13 +396,12 @@ export function HomeDashboard() {
             {settings?.sheetsIdExpense ? (
               <button
                 onClick={() => handleOpenSpreadsheet('expense')}
-                disabled={resolvingSheet.expense}
-                className="w-full py-2.5 bg-primary hover:bg-primary-light disabled:bg-primary/50 text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer disabled:cursor-not-allowed"
+                className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
               >
-                {resolvingSheet.expense ? (
+                {resolvingUrls.expense ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>{isMarathi ? 'शीट उघडत आहे...' : 'Opening Spreadsheet...'}</span>
+                    <span>{isMarathi ? 'शीट लिंक शोधत आहे...' : 'Resolving Tab Link...'}</span>
                   </>
                 ) : (
                   <>
@@ -386,6 +410,7 @@ export function HomeDashboard() {
                   </>
                 )}
               </button>
+
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
