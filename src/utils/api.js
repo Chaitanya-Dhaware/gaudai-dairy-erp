@@ -255,6 +255,7 @@ async function syncWriteToSheets(action, payload) {
   try {
     const res = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
+      redirect: 'follow',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action, ...payload })
     });
