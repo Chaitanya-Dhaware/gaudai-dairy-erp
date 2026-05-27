@@ -545,7 +545,7 @@ export async function callAPI(action, payload = {}) {
   } else {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 seconds timeout
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
 
       const res = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',

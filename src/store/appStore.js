@@ -600,6 +600,7 @@ export const useAppStore = create((set, get) => ({
     try {
       const settings = get().settings;
       const res = await callAPI('clearTransactions', {
+        clearMaster: true,
         sheetsIdCollection: settings.sheetsIdCollection,
         sheetsIdCustomer: settings.sheetsIdCustomer,
         sheetsIdExpense: settings.sheetsIdExpense
@@ -610,37 +611,60 @@ export const useAppStore = create((set, get) => ({
         const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
 
         if (!isMockMode) {
-          const collectionsSnap = await getDocs(collection(db, 'collections'));
-          const salesSnap = await getDocs(collection(db, 'sales'));
-          const expensesSnap = await getDocs(collection(db, 'expenses'));
+          const collectionsSnap = await getDocs(collection(db, 'collections')).catch(() => ({ docs: [] }));
+          const salesSnap = await getDocs(collection(db, 'sales')).catch(() => ({ docs: [] }));
+          const expensesSnap = await getDocs(collection(db, 'expenses')).catch(() => ({ docs: [] }));
+          const farmersSnap = await getDocs(collection(db, 'farmers')).catch(() => ({ docs: [] }));
+          const customersSnap = await getDocs(collection(db, 'customers')).catch(() => ({ docs: [] }));
+          const productsSnap = await getDocs(collection(db, 'products')).catch(() => ({ docs: [] }));
 
           // Delete Firestore records
           const deletePromises = [];
           collectionsSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
           salesSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
           expensesSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          farmersSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          customersSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
+          productsSnap.forEach(d => deletePromises.push(deleteDoc(d.ref)));
 
-          // Reset dues in Firestore for farmers and customers
-          const farmersSnap = await getDocs(collection(db, 'farmers'));
-          farmersSnap.forEach(d => deletePromises.push(updateDoc(d.ref, { current_due: 0 })));
+          // Seed default products back to Firestore
+          const defaultProducts = [
+            { product_id: "P001", product_name: "Milk Packet 500ml", category: "Milk", unit_price: 30, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P002", product_name: "Milk Packet 1L", category: "Milk", unit_price: 62, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P003", product_name: "Curd Cup 200g", category: "Curd", unit_price: 25, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P004", product_name: "Curd Packet 500g", category: "Curd", unit_price: 55, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P005", product_name: "Paneer 200g", category: "Paneer", unit_price: 85, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P006", product_name: "Butter 100g", category: "Butter", unit_price: 55, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P007", product_name: "Ghee 1L", category: "Ghee", unit_price: 650, status: "Active", updated_at: new Date().toISOString() }
+          ];
+          defaultProducts.forEach(p => deletePromises.push(setDoc(doc(db, 'products', p.product_id), p)));
 
-          const customersSnap = await getDocs(collection(db, 'customers'));
-          customersSnap.forEach(d => deletePromises.push(updateDoc(d.ref, { current_due: 0 })));
-
-          await Promise.all(deletePromises);
+          // Resilient delete that ignores isolated timeout errors
+          await Promise.allSettled(deletePromises);
         } else {
           // Mock mode local storage reset
           localStorage.removeItem('GAUDAI_COLLECTIONS');
           localStorage.removeItem('GAUDAI_SALES');
           localStorage.removeItem('GAUDAI_EXPENSES');
+          localStorage.removeItem('GAUDAI_FARMERS');
+          localStorage.removeItem('GAUDAI_CUSTOMERS');
+          localStorage.removeItem('GAUDAI_PRODUCTS');
           localStorage.setItem('GAUDAI_COLLECTIONS', '[]');
           localStorage.setItem('GAUDAI_SALES', '[]');
           localStorage.setItem('GAUDAI_EXPENSES', '[]');
+          localStorage.setItem('GAUDAI_FARMERS', '[]');
+          localStorage.setItem('GAUDAI_CUSTOMERS', '[]');
 
-          const mockFarmers = JSON.parse(localStorage.getItem('GAUDAI_FARMERS') || '[]').map(f => ({ ...f, current_due: 0 }));
-          const mockCustomers = JSON.parse(localStorage.getItem('GAUDAI_CUSTOMERS') || '[]').map(c => ({ ...c, current_due: 0 }));
-          localStorage.setItem('GAUDAI_FARMERS', JSON.stringify(mockFarmers));
-          localStorage.setItem('GAUDAI_CUSTOMERS', JSON.stringify(mockCustomers));
+          const defaultProducts = [
+            { product_id: "P001", product_name: "Milk Packet 500ml", category: "Milk", unit_price: 30, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P002", product_name: "Milk Packet 1L", category: "Milk", unit_price: 62, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P003", product_name: "Curd Cup 200g", category: "Curd", unit_price: 25, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P004", product_name: "Curd Packet 500g", category: "Curd", unit_price: 55, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P005", product_name: "Paneer 200g", category: "Paneer", unit_price: 85, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P006", product_name: "Butter 100g", category: "Butter", unit_price: 55, status: "Active", updated_at: new Date().toISOString() },
+            { product_id: "P007", product_name: "Ghee 1L", category: "Ghee", unit_price: 650, status: "Active", updated_at: new Date().toISOString() }
+          ];
+          localStorage.setItem('GAUDAI_PRODUCTS', JSON.stringify(defaultProducts));
         }
 
         // Reload cache locally

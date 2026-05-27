@@ -1842,13 +1842,19 @@ function deleteFarmer(requestData) {
   return { success: true, message: "Farmer deleted successfully" };
 }
 
-function clearTransactions() {
+function clearTransactions(requestData) {
+  var clearMaster = requestData && (requestData.clearMaster === true || requestData.clearMaster === "true");
+
   // 1. Collection DB
   try {
     var ssCol = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
     clearSheetKeepHeader(ssCol, "Milk_Collections");
     clearSheetKeepHeader(ssCol, "Payments");
-    resetDues(ssCol, "Farmers", 5); // 0-indexed column 5 is current_due (6th column)
+    if (clearMaster) {
+      clearSheetKeepHeader(ssCol, "Farmers");
+    } else {
+      resetDues(ssCol, "Farmers", 5); // 0-indexed column 5 is current_due (6th column)
+    }
     deleteDailySheets(ssCol);
   } catch(e) {
     logErrorToSheets("clearTransactions Collection DB error: " + e.toString());
@@ -1859,7 +1865,28 @@ function clearTransactions() {
     var ssCust = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
     clearSheetKeepHeader(ssCust, "Sales");
     clearSheetKeepHeader(ssCust, "Payments");
-    resetDues(ssCust, "Customers", 5); // 0-indexed column 5 is current_due
+    if (clearMaster) {
+      clearSheetKeepHeader(ssCust, "Customers");
+      clearSheetKeepHeader(ssCust, "Products");
+      // Re-seed default products
+      var prodSheet = ssCust.getSheetByName("Products");
+      if (prodSheet) {
+        var defaultProds = [
+          ["P001", "Milk Packet 500ml", "Milk", 30, "Active", new Date().toISOString()],
+          ["P002", "Milk Packet 1L", "Milk", 62, "Active", new Date().toISOString()],
+          ["P003", "Curd Cup 200g", "Curd", 25, "Active", new Date().toISOString()],
+          ["P004", "Curd Packet 500g", "Curd", 55, "Active", new Date().toISOString()],
+          ["P005", "Paneer 200g", "Paneer", 85, "Active", new Date().toISOString()],
+          ["P006", "Butter 100g", "Butter", 55, "Active", new Date().toISOString()],
+          ["P007", "Ghee 1L", "Ghee", 650, "Active", new Date().toISOString()]
+        ];
+        for (var k = 0; k < defaultProds.length; k++) {
+          prodSheet.appendRow(defaultProds[k]);
+        }
+      }
+    } else {
+      resetDues(ssCust, "Customers", 5); // 0-indexed column 5 is current_due
+    }
     deleteDailySheets(ssCust);
   } catch(e) {
     logErrorToSheets("clearTransactions Customer DB error: " + e.toString());
@@ -1874,7 +1901,7 @@ function clearTransactions() {
     logErrorToSheets("clearTransactions Expense DB error: " + e.toString());
   }
 
-  return { success: true, message: "All transactions cleared and dues reset successfully" };
+  return { success: true, message: "All transactions and databases cleared successfully" };
 }
 
 function clearSheetKeepHeader(ss, sheetName) {

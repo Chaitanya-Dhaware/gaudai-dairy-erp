@@ -130,14 +130,14 @@ export function Settings() {
 
   const handleClearDatabase = async () => {
     const confirmMessage = isMarathi
-      ? 'तुम्हाला खात्री आहे का की तुम्हाला सर्व व्यवहार हटवायचे आहेत? हा बदल पूर्ववत करता येणार नाही.'
-      : 'Are you absolutely sure you want to delete all transactions and reset all dues to zero? This action CANNOT be undone.';
+      ? 'तुम्हाला खात्री आहे का की तुम्हाला सर्व डेटा (शेतकरी, ग्राहक, उत्पादने आणि सर्व व्यवहार) कायमचे हटवायचे आहेत? हा बदल पूर्ववत करता येणार नाही.'
+      : 'Are you absolutely sure you want to delete ALL data (farmers, customers, products, and all transactions) and start completely fresh from scratch? This action CANNOT be undone.';
       
     if (window.confirm(confirmMessage)) {
       try {
         const success = await clearAllTransactions();
         if (success) {
-          toast.success(isMarathi ? 'व्यवहार यशस्वीरीत्या हटवले गेले!' : 'All transactions cleared and dues reset successfully!');
+          toast.success(isMarathi ? 'डेटाबेस यशस्वीरीत्या साफ केला आणि रीसेट केला!' : 'Database cleared and reset successfully!');
         } else {
           toast.error(isMarathi ? 'डेटाबेस साफ करण्यात अडचण आली' : 'Failed to clear database');
         }
