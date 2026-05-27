@@ -89,6 +89,52 @@ function setupMaster(masterIdArg) {
  */
 function doGet(e) {
   loadConfigFromProperties();
+
+  // Handle direct tab redirection
+  if (e && e.parameter && e.parameter.action === 'openTab') {
+    try {
+      var type = e.parameter.type;
+      var dateStr = e.parameter.date;
+      
+      var spreadsheetId = "";
+      var headers = [];
+      var tabPrefix = "Daily_";
+      
+      if (type === 'collection') {
+        spreadsheetId = CONFIG.COLLECTION_DB_ID;
+        headers = ["entry_id", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"];
+      } else if (type === 'customer') {
+        spreadsheetId = CONFIG.CUSTOMER_DB_ID;
+        headers = ["bill_id", "customer_id", "date", "total_amount", "paid_amount", "due_amount", "status", "timestamp"];
+      } else if (type === 'expense') {
+        spreadsheetId = CONFIG.EXPENSE_DB_ID;
+        headers = ["expense_id", "date", "reason", "amount", "category", "payment_method", "notes", "timestamp"];
+      }
+      
+      if (spreadsheetId) {
+        var ss = SpreadsheetApp.openById(spreadsheetId);
+        var dateStrFormatted = formatSheetDate(dateStr);
+        var tabName = tabPrefix + dateStrFormatted;
+        
+        var sheet = ss.getSheetByName(tabName);
+        if (!sheet) {
+          createSheetIfMissing(ss, tabName, headers);
+          sheet = ss.getSheetByName(tabName);
+        }
+        
+        var sheetId = sheet.getSheetId();
+        var url = "https://docs.google.com/spreadsheets/d/" + spreadsheetId + "/edit#gid=" + sheetId;
+        
+        // Return HTML output that redirects the user to the sheet tab
+        var redirectHtml = "<script>window.location.replace('" + url + "');</script>";
+        return HtmlService.createHtmlOutput(redirectHtml);
+      }
+    } catch(err) {
+      return HtmlService.createHtmlOutput("<h2>Error opening spreadsheet tab: " + err.toString() + "</h2>");
+    }
+  }
+
+  loadConfigFromProperties();
   var masterId = (e && e.parameter && e.parameter.masterId) || CONFIG.MASTER_DB_ID;
   if (masterId) {
     CONFIG.MASTER_DB_ID = masterId;

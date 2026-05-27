@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
 import { Droplet, Users, Receipt, PieChart, TrendingUp, TrendingDown, Clock, ShieldCheck, FileSpreadsheet, ExternalLink, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { callAPI } from '../utils/api';
 
 export function HomeDashboard() {
   const { t, i18n } = useTranslation();
@@ -12,50 +11,10 @@ export function HomeDashboard() {
 
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const [tabUrls, setTabUrls] = useState({
-    collection: '',
-    customer: '',
-    expense: ''
-  });
-  const [resolvingUrls, setResolvingUrls] = useState({
-    collection: false,
-    customer: false,
-    expense: false
-  });
-
-  useEffect(() => {
-    const resolveUrls = async () => {
-      const types = ['collection', 'customer', 'expense'];
-      
-      types.forEach(type => {
-        setResolvingUrls(prev => ({ ...prev, [type]: true }));
-      });
-
-      try {
-        const [collectionRes, customerRes, expenseRes] = await Promise.all([
-          callAPI('getSpreadsheetTabUrl', { type: 'collection', date: selectedDate }),
-          callAPI('getSpreadsheetTabUrl', { type: 'customer', date: selectedDate }),
-          callAPI('getSpreadsheetTabUrl', { type: 'expense', date: selectedDate })
-        ]).catch(() => [null, null, null]);
-
-        setTabUrls({
-          collection: collectionRes?.success ? collectionRes.url : '',
-          customer: customerRes?.success ? customerRes.url : '',
-          expense: expenseRes?.success ? expenseRes.url : ''
-        });
-      } catch (e) {
-        console.error("Error resolving spreadsheet daily tab URLs:", e);
-      } finally {
-        types.forEach(type => {
-          setResolvingUrls(prev => ({ ...prev, [type]: false }));
-        });
-      }
-    };
-
-    resolveUrls();
-  }, [selectedDate, settings]);
-
   const handleOpenSpreadsheet = (type) => {
+    const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
+    const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
+
     const sheetId = type === 'collection' 
       ? settings?.sheetsIdCollection 
       : type === 'customer' 
@@ -67,10 +26,13 @@ export function HomeDashboard() {
       return;
     }
 
-    const baseUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
-    const targetUrl = tabUrls[type] || baseUrl;
-    
-    window.open(targetUrl, '_blank');
+    if (isMockMode) {
+      const baseUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+      window.open(baseUrl, '_blank');
+    } else {
+      const redirectUrl = `${appScriptUrl}?action=openTab&type=${type}&date=${selectedDate}`;
+      window.open(redirectUrl, '_blank');
+    }
   };
 
   const formatSheetDate = (dateStr) => {
@@ -321,19 +283,9 @@ export function HomeDashboard() {
                 onClick={() => handleOpenSpreadsheet('collection')}
                 className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
               >
-                {resolvingUrls.collection ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>{isMarathi ? 'शीट लिंक शोधत आहे...' : 'Resolving Tab Link...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </>
-                )}
+                <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
+                <ExternalLink className="w-3.5 h-3.5" />
               </button>
-
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
@@ -358,19 +310,9 @@ export function HomeDashboard() {
                 onClick={() => handleOpenSpreadsheet('customer')}
                 className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
               >
-                {resolvingUrls.customer ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>{isMarathi ? 'शीट लिंक शोधत आहे...' : 'Resolving Tab Link...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </>
-                )}
+                <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
+                <ExternalLink className="w-3.5 h-3.5" />
               </button>
-
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
@@ -398,19 +340,9 @@ export function HomeDashboard() {
                 onClick={() => handleOpenSpreadsheet('expense')}
                 className="w-full py-2.5 bg-primary hover:bg-primary-light text-white text-center text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
               >
-                {resolvingUrls.expense ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>{isMarathi ? 'शीट लिंक शोधत आहे...' : 'Resolving Tab Link...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </>
-                )}
+                <span>{isMarathi ? 'शीट उघडा' : 'Go to Spreadsheet'}</span>
+                <ExternalLink className="w-3.5 h-3.5" />
               </button>
-
             ) : (
               <button disabled className="w-full py-2.5 bg-black/[0.05] text-textSecondary text-xs font-bold rounded-xl cursor-not-allowed">
                 {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not set'}
