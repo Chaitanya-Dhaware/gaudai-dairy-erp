@@ -569,6 +569,46 @@ function createSheetIfMissing(ss, sheetName, headers) {
 }
 
 /**
+ * Ensures the Farmers sheet has a payment_status column (col 8).
+ * Adds it if missing and fills existing rows. Also fixes any negative current_due values.
+ */
+function ensureFarmerStatusColumn(ss) {
+  try {
+    var sheet = ss.getSheetByName("Farmers");
+    if (!sheet) return;
+    var lastCol = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var statusColIndex = headers.indexOf("payment_status"); // 0-based
+    
+    // Add header if missing
+    if (statusColIndex === -1) {
+      var newCol = lastCol + 1;
+      sheet.getRange(1, newCol).setValue("payment_status").setFontWeight("bold");
+      statusColIndex = newCol - 1; // 0-based
+    }
+    
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return;
+    
+    // Fix current_due (col 6, 1-based) and fill payment_status
+    var dataRange = sheet.getRange(2, 1, lastRow - 1, Math.max(lastCol, statusColIndex + 1));
+    var data = dataRange.getValues();
+    
+    for (var i = 0; i < data.length; i++) {
+      var due = parseFloat(data[i][5] || 0);
+      if (isNaN(due)) due = 0;
+      // Fix negative dues
+      if (due < 0) due = 0;
+      data[i][5] = due;
+      data[i][statusColIndex] = due <= 0 ? "\u2705 Paid" : "\u23f3 Pending";
+    }
+    dataRange.setValues(data);
+  } catch(e) {
+    logErrorToSheets("ensureFarmerStatusColumn error: " + e.toString());
+  }
+}
+
+/**
  * Load settings (spreadsheets mapping and credentials) from Master DB sheet
  */
 function loadSettingsFromSheets() {
@@ -678,6 +718,8 @@ function updateSettingsTable(requestData) {
 function registerFarmer(data) {
   var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
   var sheet = ss.getSheetByName("Farmers");
+  // Ensure payment_status column exists on existing sheet
+  ensureFarmerStatusColumn(ss);
   var rows = sheet.getDataRange().getValues();
   var maxId = 0;
   for (var i = 1; i < rows.length; i++) {
@@ -690,6 +732,7 @@ function registerFarmer(data) {
     }
   }
   var farmerId = data.farmer_id || ("F-" + String(maxId + 1).padStart(2, '0'));
+  var initialDue = Math.max(0, parseSafeFloat(data.current_due) || 0);
 
   sheet.appendRow([
     farmerId,
@@ -697,8 +740,9 @@ function registerFarmer(data) {
     data.mobile,
     data.address || "",
     data.milk_type,
-    parseSafeFloat(data.current_due) || 0,
-    data.created_at || new Date().toISOString()
+    initialDue,
+    data.created_at || new Date().toISOString(),
+    initialDue <= 0 ? "\u2705 Paid" : "\u23f3 Pending"
   ]);
 
   return { success: true, message: "Farmer registered successfully", data: { farmer_id: farmerId } };
@@ -706,17 +750,21 @@ function registerFarmer(data) {
 
 function getFarmerList() {
   var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+  // Auto-fix existing sheets: add payment_status column if missing, fix negatives
+  ensureFarmerStatusColumn(ss);
   var sheet = ss.getSheetByName("Farmers");
   var values = sheet.getDataRange().getValues();
   var list = [];
   for (var i = 1; i < values.length; i++) {
+    var due = Math.max(0, parseSafeFloat(values[i][5]));
     list.push({
       farmer_id: values[i][0],
       name: values[i][1],
       mobile: values[i][2],
       address: values[i][3],
       milk_type: values[i][4],
-      current_due: parseSafeFloat(values[i][5])
+      current_due: due,
+      payment_status: values[i][7] || (due <= 0 ? "\u2705 Paid" : "\u23f3 Pending")
     });
   }
   return { success: true, data: list };
@@ -768,13 +816,14 @@ function addMilkCollection(data) {
     logErrorToSheets("Failed to write milk collection to daily sheet: " + e.toString());
   }
 
-  // Update farmer current_due
+  // Update farmer current_due and payment_status
   var farmSheet = ss.getSheetByName("Farmers");
   var farmData = farmSheet.getDataRange().getValues();
   for (var i = 1; i < farmData.length; i++) {
     if (farmData[i][0] === data.farmer_id) {
-      var currentDue = parseSafeFloat(farmData[i][5]) + dueVal;
+      var currentDue = Math.max(0, parseSafeFloat(farmData[i][5]) + dueVal);
       farmSheet.getRange(i + 1, 6).setValue(currentDue);
+      farmSheet.getRange(i + 1, 8).setValue(currentDue <= 0 ? "\u2705 Paid" : "\u23f3 Pending");
       break;
     }
   }
@@ -881,13 +930,14 @@ function markFarmerPaid(entryId, amountCleared) {
       colSheet.getRange(i + 1, 11).setValue(remainingDue);    // update due
       colSheet.getRange(i + 1, 12).setValue(status); // status
       
-      // Update farmer
+      // Update farmer current_due and payment_status
       var farmSheet = ss.getSheetByName("Farmers");
       var farmData = farmSheet.getDataRange().getValues();
       for (var j = 1; j < farmData.length; j++) {
         if (farmData[j][0] === farmerId) {
           var newDue = Math.max(0, parseSafeFloat(farmData[j][5]) - amtVal);
           farmSheet.getRange(j + 1, 6).setValue(newDue);
+          farmSheet.getRange(j + 1, 8).setValue(newDue <= 0 ? "\u2705 Paid" : "\u23f3 Pending");
           break;
         }
       }
