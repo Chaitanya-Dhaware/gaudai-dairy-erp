@@ -568,6 +568,96 @@ function createSheetIfMissing(ss, sheetName, headers) {
   }
 }
 
+/** Look up farmer name from Farmers sheet by farmer_id */
+function getFarmerNameById(ss, farmerId) {
+  try {
+    var sheet = ss.getSheetByName("Farmers");
+    if (!sheet) return farmerId;
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0] === farmerId) return data[i][1] || farmerId;
+    }
+  } catch(e) {}
+  return farmerId;
+}
+
+/**
+ * Migrates existing Milk_Collections and Daily_ sheets to new format:
+ * - Replaces entry_id (col A) with farmer_name
+ * - Converts full ISO timestamp (col M) to time-only (hh:mm a IST)
+ * Safe to call multiple times (skips if already migrated).
+ */
+function reformatMilkCollections(ss) {
+  try {
+    var tz = "Asia/Kolkata";
+    var sheets = ss.getSheets();
+    var farmersSheet = ss.getSheetByName("Farmers");
+    var farmerMap = {};
+    if (farmersSheet) {
+      var fd = farmersSheet.getDataRange().getValues();
+      for (var f = 1; f < fd.length; f++) {
+        farmerMap[fd[f][0]] = fd[f][1] || fd[f][0];
+      }
+    }
+    
+    var targetSheets = [];
+    for (var s = 0; s < sheets.length; s++) {
+      var n = sheets[s].getName();
+      if (n === "Milk_Collections" || n.indexOf("Daily_") === 0) {
+        targetSheets.push(sheets[s]);
+      }
+    }
+    
+    for (var t = 0; t < targetSheets.length; t++) {
+      var sh = targetSheets[t];
+      var lastRow = sh.getLastRow();
+      if (lastRow < 1) continue;
+      
+      // Check & update header row
+      var header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      var alreadyMigrated = header[0] === "farmer_name";
+      
+      // Update col A header
+      sh.getRange(1, 1).setValue("farmer_name");
+      // Update col M header
+      if (header.length >= 13) sh.getRange(1, 13).setValue("time");
+      
+      if (lastRow <= 1) continue;
+      
+      var dataRange = sh.getRange(2, 1, lastRow - 1, Math.max(sh.getLastColumn(), 13));
+      var rows = dataRange.getValues();
+      var changed = false;
+      
+      for (var r = 0; r < rows.length; r++) {
+        // Col A: if it looks like an entry_id (starts with E and long number), replace with farmer name
+        var colA = String(rows[r][0] || "");
+        if (!alreadyMigrated && (colA.match(/^E\d{10,}$/) || colA === "")) {
+          var fid = String(rows[r][1] || "");
+          rows[r][0] = farmerMap[fid] || fid;
+          changed = true;
+        }
+        // Col M: convert ISO timestamp to time-only
+        var colM = rows[r][12];
+        if (colM) {
+          var colMStr = String(colM);
+          // Only convert if it looks like a full ISO date or Date object
+          if (colMStr.indexOf("T") !== -1 || colM instanceof Date) {
+            try {
+              var d = colM instanceof Date ? colM : new Date(colMStr);
+              rows[r][12] = Utilities.formatDate(d, tz, "hh:mm a");
+              changed = true;
+            } catch(ex) {}
+          }
+        }
+      }
+      
+      if (changed) dataRange.setValues(rows);
+    }
+  } catch(e) {
+    logErrorToSheets("reformatMilkCollections error: " + e.toString());
+  }
+}
+
 /**
  * Ensures the Farmers sheet has a payment_status column (col 8).
  * Adds it if missing and fills existing rows. Also fixes any negative current_due values.
@@ -773,7 +863,6 @@ function getFarmerList() {
 function addMilkCollection(data) {
   var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
   var colSheet = ss.getSheetByName("Milk_Collections");
-  var entryId = "E" + Date.now();
 
   var qty = parseSafeFloat(data.quantity);
   var fatVal = parseSafeFloat(data.fat);
@@ -784,8 +873,13 @@ function addMilkCollection(data) {
 
   var status = dueVal <= 0 ? 'Paid' : (paidVal > 0 ? 'Partial' : 'Pending');
 
+  // Lookup farmer name
+  var farmerName = getFarmerNameById(ss, data.farmer_id);
+  // Time only in IST
+  var timeOnly = Utilities.formatDate(new Date(), "Asia/Kolkata", "hh:mm a");
+
   var rowData = [
-    entryId,
+    farmerName,
     data.farmer_id,
     data.date,
     data.milk_type,
@@ -797,7 +891,7 @@ function addMilkCollection(data) {
     paidVal,
     dueVal,
     status,
-    new Date().toISOString()
+    timeOnly
   ];
 
   colSheet.appendRow(rowData);
@@ -808,7 +902,7 @@ function addMilkCollection(data) {
     var dailySheetName = "Daily_" + dateStrFormatted;
     var dailySheet = ss.getSheetByName(dailySheetName);
     if (!dailySheet) {
-      createSheetIfMissing(ss, dailySheetName, ["entry_id", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
+      createSheetIfMissing(ss, dailySheetName, ["farmer_name", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "time"]);
       dailySheet = ss.getSheetByName(dailySheetName);
     }
     dailySheet.appendRow(rowData);
@@ -838,8 +932,8 @@ function addMilkCollection(data) {
           data.farmer_id,
           paidVal,
           data.date || new Date().toISOString().split('T')[0],
-          "Initial payment for collection entry " + entryId,
-          new Date().toISOString()
+          "Initial payment from " + farmerName + " on " + data.date,
+          timeOnly
         ]);
       }
     } catch(e) {
@@ -856,7 +950,7 @@ function addMilkCollection(data) {
     success: true, 
     message: "Milk collection saved successfully",
     data: {
-      entry_id: entryId,
+      farmer_name: farmerName,
       farmer_id: data.farmer_id,
       date: data.date,
       milk_type: data.milk_type,
@@ -868,13 +962,15 @@ function addMilkCollection(data) {
       paid_amount: paidVal,
       due_amount: dueVal,
       status: status,
-      timestamp: new Date().toISOString()
+      time: timeOnly
     }
   };
 }
 
 function getCollectionEntries() {
   var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+  // Migrate existing data to new format (farmer_name col A, time col M)
+  reformatMilkCollections(ss);
   var sheet = ss.getSheetByName("Milk_Collections");
   var values = sheet.getDataRange().getValues();
   var list = [];
@@ -889,7 +985,7 @@ function getCollectionEntries() {
       }
     }
     list.push({
-      entry_id: values[i][0],
+      farmer_name: values[i][0],
       farmer_id: values[i][1],
       date: formattedDate,
       milk_type: values[i][3],
@@ -900,67 +996,72 @@ function getCollectionEntries() {
       total_amount: parseSafeFloat(values[i][8]),
       paid_amount: parseSafeFloat(values[i][9]),
       due_amount: parseSafeFloat(values[i][10]),
-      status: values[i][11]
+      status: values[i][11],
+      time: values[i][12] || ""
     });
   }
   return { success: true, data: list };
 }
 
 function markFarmerPaid(entryId, amountCleared) {
+  // entryId here is kept for API compatibility, but we now match on farmer_id+date via entryId pattern
   var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
   var colSheet = ss.getSheetByName("Milk_Collections");
   var colData = colSheet.getDataRange().getValues();
   
   for (var i = 1; i < colData.length; i++) {
-    if (colData[i][0] === entryId) {
-      var farmerId = colData[i][1];
-      var due = parseSafeFloat(colData[i][10]);
-      var currentPaid = parseSafeFloat(colData[i][9]);
-      
-      var amtVal = amountCleared !== undefined && amountCleared !== null ? parseSafeFloat(amountCleared) : due;
-      if (amtVal > due) {
-        amtVal = due;
+    // Match: col B is farmer_id. entryId could be farmer_id or legacy E-number.
+    // Try farmer_id match first (col B), or legacy entry check via passed entryId not found in col A.
+    var rowFarmerId = String(colData[i][1] || "");
+    var matchFound = (rowFarmerId === entryId) || (String(colData[i][0] || "") === entryId);
+    if (!matchFound) continue;
+    
+    var farmerId = colData[i][1];
+    var due = parseSafeFloat(colData[i][10]);
+    var currentPaid = parseSafeFloat(colData[i][9]);
+    if (due <= 0) continue; // already paid, check next row for same farmer
+    
+    var amtVal = amountCleared !== undefined && amountCleared !== null ? parseSafeFloat(amountCleared) : due;
+    if (amtVal > due) amtVal = due;
+    
+    var paid = currentPaid + amtVal;
+    var remainingDue = Math.max(0, due - amtVal);
+    var status = remainingDue <= 0 ? "Paid" : "Partial";
+    
+    colSheet.getRange(i + 1, 10).setValue(paid);
+    colSheet.getRange(i + 1, 11).setValue(remainingDue);
+    colSheet.getRange(i + 1, 12).setValue(status);
+    
+    // Update farmer current_due and payment_status
+    var farmSheet = ss.getSheetByName("Farmers");
+    var farmData = farmSheet.getDataRange().getValues();
+    for (var j = 1; j < farmData.length; j++) {
+      if (farmData[j][0] === farmerId) {
+        var newDue = Math.max(0, parseSafeFloat(farmData[j][5]) - amtVal);
+        farmSheet.getRange(j + 1, 6).setValue(newDue);
+        farmSheet.getRange(j + 1, 8).setValue(newDue <= 0 ? "\u2705 Paid" : "\u23f3 Pending");
+        break;
       }
-      
-      var paid = currentPaid + amtVal;
-      var remainingDue = Math.max(0, due - amtVal);
-      var status = remainingDue <= 0 ? "Paid" : "Partial";
-      
-      colSheet.getRange(i + 1, 10).setValue(paid); // update paid
-      colSheet.getRange(i + 1, 11).setValue(remainingDue);    // update due
-      colSheet.getRange(i + 1, 12).setValue(status); // status
-      
-      // Update farmer current_due and payment_status
-      var farmSheet = ss.getSheetByName("Farmers");
-      var farmData = farmSheet.getDataRange().getValues();
-      for (var j = 1; j < farmData.length; j++) {
-        if (farmData[j][0] === farmerId) {
-          var newDue = Math.max(0, parseSafeFloat(farmData[j][5]) - amtVal);
-          farmSheet.getRange(j + 1, 6).setValue(newDue);
-          farmSheet.getRange(j + 1, 8).setValue(newDue <= 0 ? "\u2705 Paid" : "\u23f3 Pending");
-          break;
-        }
-      }
-
-      // Also log payment to Payments sheet
-      try {
-        var paySheet = ss.getSheetByName("Payments");
-        if (paySheet) {
-          paySheet.appendRow([
-            "PAY-" + Date.now(),
-            farmerId,
-            amtVal,
-            new Date().toISOString().split('T')[0],
-            "Cleared due for collection entry " + entryId,
-            new Date().toISOString()
-          ]);
-        }
-      } catch(e) {
-        logErrorToSheets("Failed to write to Payments sheet: " + e.toString());
-      }
-      
-      break;
     }
+
+    // Also log payment to Payments sheet
+    try {
+      var paySheet = ss.getSheetByName("Payments");
+      if (paySheet) {
+        paySheet.appendRow([
+          "PAY-" + Date.now(),
+          farmerId,
+          amtVal,
+          new Date().toISOString().split('T')[0],
+          "Cleared due for farmer " + farmerId,
+          Utilities.formatDate(new Date(), "Asia/Kolkata", "hh:mm a")
+        ]);
+      }
+    } catch(e) {
+      logErrorToSheets("Failed to write to Payments sheet: " + e.toString());
+    }
+    
+    break;
   }
   return { success: true, message: "Cleared successfully" };
 }
