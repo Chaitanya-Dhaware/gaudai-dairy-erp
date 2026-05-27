@@ -980,20 +980,6 @@ function handleMockAPI(action, payload) {
       localStorage.setItem('GAUDAI_SETTINGS', JSON.stringify(payload));
       return { success: true, message: 'Settings updated successfully' };
 
-    case 'getSpreadsheetTabUrl': {
-      const type = payload.type;
-      settings = JSON.parse(localStorage.getItem('GAUDAI_SETTINGS')) || { baseRate: 8.5, businessName: 'Gaudai AI Dairy' };
-      const baseProps = {
-        collection: settings.sheetsIdCollection || 'mock_collection_id',
-        customer: settings.sheetsIdCustomer || 'mock_customer_id',
-        expense: settings.sheetsIdExpense || 'mock_expense_id'
-      };
-      const spreadsheetId = baseProps[type] || 'mock_id';
-      return {
-        success: true,
-        url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=mock_tab_gid`
-      };
-    }
 
     default:
       return { success: false, message: `Action ${action} not supported in mock mode` };
