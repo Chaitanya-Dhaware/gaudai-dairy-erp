@@ -885,6 +885,7 @@ function getFarmerList() {
       address: values[i][3],
       milk_type: values[i][4],
       current_due: due,
+      created_at: values[i][6] || new Date().toISOString(),
       payment_status: values[i][7] || (due <= 0 ? "\u2705 Paid" : "\u23f3 Pending")
     });
   }
@@ -1130,7 +1131,8 @@ function getCustomerList() {
       owner_name: values[i][2],
       mobile: values[i][3],
       address: values[i][4],
-      current_due: parseSafeFloat(values[i][5])
+      current_due: parseSafeFloat(values[i][5]),
+      created_at: values[i][6] || new Date().toISOString()
     });
   }
   return { success: true, data: list };
@@ -1147,7 +1149,8 @@ function getProductList() {
       product_name: values[i][1],
       category: values[i][2],
       unit_price: parseSafeFloat(values[i][3]),
-      status: values[i][4]
+      status: values[i][4],
+      updated_at: values[i][5] || new Date().toISOString()
     });
   }
   return { success: true, data: list };
@@ -1831,7 +1834,7 @@ function deleteFarmer(requestData) {
   var sheet = ss.getSheetByName("Farmers");
   var values = sheet.getDataRange().getValues();
   for (var i = 1; i < values.length; i++) {
-    if (values[i][0] === farmerId) {
+    if (String(values[i][0]).trim() === String(farmerId).trim()) {
       sheet.deleteRow(i + 1);
       break;
     }

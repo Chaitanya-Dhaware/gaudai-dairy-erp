@@ -557,7 +557,7 @@ function PaymentTracking({
   const filteredCols = collections.filter(c => {
     const statusMatch = filterStatus === 'All' || c.status === filterStatus;
     const farmer = farmers.find(f => f.farmer_id === c.farmer_id);
-    const farmerName = farmer?.name || '';
+    const farmerName = farmer?.name || c.farmer_name || '';
     const nameMatch = farmerName.toLowerCase().includes(searchName.toLowerCase()) || 
                       c.farmer_id.toLowerCase().includes(searchName.toLowerCase());
     return statusMatch && nameMatch;
@@ -659,7 +659,7 @@ function PaymentTracking({
                   <tr key={c.entry_id} className="hover:bg-black/[0.01]">
                     <td className="py-3 px-4 font-mono text-textSecondary">{formatDate(c.date)}</td>
                     <td className="py-3 px-4">
-                      <p className="font-semibold text-textPrimary">{farmer?.name || 'Unknown Farmer'}</p>
+                      <p className="font-semibold text-textPrimary">{farmer?.name || c.farmer_name || 'Unknown Farmer'}</p>
                       <p className="text-[10px] text-textSecondary font-mono">{c.farmer_id}</p>
                     </td>
                     <td className="py-3 px-4 font-mono font-medium">{c.quantity} L</td>
@@ -723,8 +723,8 @@ function PaymentTracking({
             <div className="text-xs text-textSecondary space-y-1">
               <p>
                 {isMarathi 
-                  ? `शेतकरी: ${farmers.find(f => f.farmer_id === modalEntry.farmer_id)?.name} (${modalEntry.farmer_id})`
-                  : `Farmer: ${farmers.find(f => f.farmer_id === modalEntry.farmer_id)?.name} (${modalEntry.farmer_id})`}
+                  ? `शेतकरी: ${farmers.find(f => f.farmer_id === modalEntry.farmer_id)?.name || modalEntry.farmer_name || 'Unknown'} (${modalEntry.farmer_id})`
+                  : `Farmer: ${farmers.find(f => f.farmer_id === modalEntry.farmer_id)?.name || modalEntry.farmer_name || 'Unknown'} (${modalEntry.farmer_id})`}
               </p>
               <p>
                 {isMarathi 
@@ -941,7 +941,7 @@ function DailyTransactions({
                   <tr key={c.entry_id} className="hover:bg-black/[0.01]">
                     <td className="py-3 px-4 font-mono text-textSecondary">{formatDate(c.date)}</td>
                     <td className="py-3 px-4">
-                      <p className="font-semibold text-textPrimary">{farmer?.name || 'Unknown Farmer'}</p>
+                      <p className="font-semibold text-textPrimary">{farmer?.name || c.farmer_name || 'Unknown Farmer'}</p>
                       <p className="text-[10px] text-textSecondary font-mono">{c.farmer_id}</p>
                     </td>
                     <td className="py-3 px-4 font-mono font-medium">{c.quantity} L</td>

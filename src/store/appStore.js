@@ -115,13 +115,69 @@ export const useAppStore = create((set, get) => ({
         const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
         const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
 
+        const mergeLists = (fsList, gsList, idKey) => {
+          const fsItems = fsList || [];
+          const gsItems = gsList || [];
+          const merged = [...fsItems];
+          gsItems.forEach(gs => {
+            if (!merged.some(fs => fs[idKey] === gs[idKey])) {
+              merged.push(gs);
+            }
+          });
+          return merged;
+        };
+
+        const fsFarmers = (!isMockMode && backupFarmers && backupFarmers.success) ? backupFarmers.data : [];
+        const fsProducts = (!isMockMode && backupProducts && backupProducts.success) ? backupProducts.data : [];
+        const fsCustomers = (!isMockMode && backupCustomers && backupCustomers.success) ? backupCustomers.data : [];
+        const fsCollections = (!isMockMode && backupCollections && backupCollections.success) ? backupCollections.data : [];
+        const fsSales = (!isMockMode && backupSales && backupSales.success) ? backupSales.data : [];
+        const fsExpenses = (!isMockMode && backupExpenses && backupExpenses.success) ? backupExpenses.data : [];
+
         // Check if there are any missing entries in Sheets compared to Firestore
-        const missingFarmers = isMockMode ? [] : (backupFarmers?.data || []).filter(bf => !d.farmers.some(sf => sf.farmer_id === bf.farmer_id));
-        const missingCollections = isMockMode ? [] : (backupCollections?.data || []).filter(bc => !d.collections.some(sc => sc.entry_id === bc.entry_id));
-        const missingCustomers = isMockMode ? [] : (backupCustomers?.data || []).filter(bc => !d.customers.some(sc => sc.customer_id === bc.customer_id));
-        const missingProducts = isMockMode ? [] : (backupProducts?.data || []).filter(bp => !d.products.some(sp => sp.product_id === bp.product_id));
-        const missingSales = isMockMode ? [] : (backupSales?.data || []).filter(bs => !d.sales.some(ss => ss.bill_id === bs.bill_id));
-        const missingExpenses = isMockMode ? [] : (backupExpenses?.data || []).filter(be => !d.expenses.some(se => se.expense_id === be.expense_id));
+        const missingFarmers = isMockMode ? [] : fsFarmers.filter(bf => !d.farmers.some(sf => sf.farmer_id === bf.farmer_id));
+        const missingCollections = isMockMode ? [] : fsCollections.filter(bc => !d.collections.some(sc => sc.entry_id === bc.entry_id));
+        const missingCustomers = isMockMode ? [] : fsCustomers.filter(bc => !d.customers.some(sc => sc.customer_id === bc.customer_id));
+        const missingProducts = isMockMode ? [] : fsProducts.filter(bp => !d.products.some(sp => sp.product_id === bp.product_id));
+        const missingSales = isMockMode ? [] : fsSales.filter(bs => !d.sales.some(ss => ss.bill_id === bs.bill_id));
+        const missingExpenses = isMockMode ? [] : fsExpenses.filter(be => !d.expenses.some(se => se.expense_id === be.expense_id));
+
+        // Check if there are any missing entries in Firestore compared to Sheets
+        const missingFsFarmers = isMockMode ? [] : (d.farmers || []).filter(sf => !fsFarmers.some(bf => bf.farmer_id === sf.farmer_id));
+        const missingFsCustomers = isMockMode ? [] : (d.customers || []).filter(sc => !fsCustomers.some(bc => bc.customer_id === sc.customer_id));
+        const missingFsProducts = isMockMode ? [] : (d.products || []).filter(sp => !fsProducts.some(bp => bp.product_id === sp.product_id));
+        const missingFsCollections = isMockMode ? [] : (d.collections || []).filter(sc => !fsCollections.some(bc => bc.entry_id === sc.entry_id));
+        const missingFsSales = isMockMode ? [] : (d.sales || []).filter(ss => !fsSales.some(bc => bc.bill_id === ss.bill_id));
+        const missingFsExpenses = isMockMode ? [] : (d.expenses || []).filter(se => !fsExpenses.some(bc => bc.expense_id === se.expense_id));
+
+        const needsFirestoreSync = 
+          missingFsFarmers.length > 0 ||
+          missingFsCustomers.length > 0 ||
+          missingFsProducts.length > 0 ||
+          missingFsCollections.length > 0 ||
+          missingFsSales.length > 0 ||
+          missingFsExpenses.length > 0;
+
+        if (needsFirestoreSync) {
+          // Sync missing data from Sheets to Firestore in the background
+          (async () => {
+            try {
+              console.log(`Syncing missing data to Firestore: Farmers (${missingFsFarmers.length}), Customers (${missingFsCustomers.length}), Products (${missingFsProducts.length}), Collections (${missingFsCollections.length}), Sales (${missingFsSales.length}), Expenses (${missingFsExpenses.length})`);
+              const batchPromises = [];
+              missingFsFarmers.forEach(item => batchPromises.push(setDoc(doc(db, 'farmers', item.farmer_id), item)));
+              missingFsCustomers.forEach(item => batchPromises.push(setDoc(doc(db, 'customers', item.customer_id), item)));
+              missingFsProducts.forEach(item => batchPromises.push(setDoc(doc(db, 'products', item.product_id), item)));
+              missingFsCollections.forEach(item => batchPromises.push(setDoc(doc(db, 'collections', item.entry_id), item)));
+              missingFsSales.forEach(item => batchPromises.push(setDoc(doc(db, 'sales', item.bill_id), item)));
+              missingFsExpenses.forEach(item => batchPromises.push(setDoc(doc(db, 'expenses', item.expense_id), item)));
+              
+              await Promise.all(batchPromises);
+              console.log('Firestore sync completed successfully.');
+            } catch (err) {
+              console.error('Error backing up Sheets data to Firestore:', err);
+            }
+          })();
+        }
 
         const needsSync = 
           missingFarmers.length > 0 ||
@@ -158,9 +214,9 @@ export const useAppStore = create((set, get) => ({
           if (reBatchRes && reBatchRes.success && reBatchRes.data) {
             const rd = reBatchRes.data;
             set({
-              farmers: (!isMockMode && backupFarmers && backupFarmers.success && backupFarmers.data.length > 0) ? backupFarmers.data : (rd.farmers || []),
-              products: (!isMockMode && backupProducts && backupProducts.success && backupProducts.data.length > 0) ? backupProducts.data : (rd.products || []),
-              customers: (!isMockMode && backupCustomers && backupCustomers.success && backupCustomers.data.length > 0) ? backupCustomers.data : (rd.customers || []),
+              farmers: mergeLists(fsFarmers, rd.farmers, 'farmer_id'),
+              products: mergeLists(fsProducts, rd.products, 'product_id'),
+              customers: mergeLists(fsCustomers, rd.customers, 'customer_id'),
               collections: rd.collections || [],
               sales: rd.sales || [],
               expenses: rd.expenses || [],
@@ -171,9 +227,9 @@ export const useAppStore = create((set, get) => ({
           }
         }
 
-        const farmersData = (!isMockMode && backupFarmers && backupFarmers.success && backupFarmers.data.length > 0) ? backupFarmers.data : (d.farmers || []);
-        const productsData = (!isMockMode && backupProducts && backupProducts.success && backupProducts.data.length > 0) ? backupProducts.data : (d.products || []);
-        const customersData = (!isMockMode && backupCustomers && backupCustomers.success && backupCustomers.data.length > 0) ? backupCustomers.data : (d.customers || []);
+        const farmersData = mergeLists(fsFarmers, d.farmers, 'farmer_id');
+        const productsData = mergeLists(fsProducts, d.products, 'product_id');
+        const customersData = mergeLists(fsCustomers, d.customers, 'customer_id');
 
         set({
           farmers: farmersData,
