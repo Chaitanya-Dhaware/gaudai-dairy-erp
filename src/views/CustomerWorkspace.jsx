@@ -655,29 +655,49 @@ function NewBillingTerminal({
           </h3>
 
           {/* Step 1: Customer Select */}
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-textSecondary uppercase tracking-wider">{t('customer.selectCustomer')}</label>
-            <select
-              value={selectedCustId}
-              onChange={(e) => setSelectedCustId(e.target.value)}
-              className="w-full px-3 py-2.5 border border-black/[0.08] rounded-xl text-sm bg-background font-semibold"
-            >
-              <option value="">-- {isMarathi ? 'ग्राहक निवडा' : 'Select Customer'} --</option>
-              {customers.map(c => (
-                <option key={c.customer_id} value={c.customer_id}>
-                  {c.shop_name} ({c.owner_name})
-                </option>
-              ))}
-            </select>
-            {customer && (
-              <div className="text-xs font-semibold mt-1">
-                <span className="text-textSecondary">{t('customer.currentDue')}: </span>
-                <span className={customer.current_due > 0 ? 'text-accent' : 'text-primary'}>
-                  {formatCurrency(customer.current_due)}
-                </span>
-              </div>
-            )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-textSecondary uppercase tracking-wider">{t('customer.customerId')} *</label>
+              <select
+                value={selectedCustId}
+                onChange={(e) => setSelectedCustId(e.target.value)}
+                className="w-full px-3 py-2.5 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary font-semibold font-mono"
+                required
+              >
+                <option value="">-- {isMarathi ? 'निवडा' : 'Select ID'} --</option>
+                {customers.map(c => (
+                  <option key={c.customer_id} value={c.customer_id}>
+                    {c.customer_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-textSecondary uppercase tracking-wider">{t('customer.customerName')} *</label>
+              <select
+                value={selectedCustId}
+                onChange={(e) => setSelectedCustId(e.target.value)}
+                className="w-full px-3 py-2.5 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary font-semibold"
+                required
+              >
+                <option value="">-- {isMarathi ? 'नाव निवडा' : 'Select Name'} --</option>
+                {customers.map(c => (
+                  <option key={c.customer_id} value={c.customer_id}>
+                    {c.shop_name} ({c.owner_name})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+          {customer && (
+            <div className="text-xs font-semibold mt-1">
+              <span className="text-textSecondary">{t('customer.currentDue')}: </span>
+              <span className={customer.current_due > 0 ? 'text-accent' : 'text-primary'}>
+                {formatCurrency(customer.current_due)}
+              </span>
+            </div>
+          )}
 
           {/* Step 2: Add Product line */}
           <form onSubmit={handleAddItem} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end bg-background p-4 rounded-xl border border-black/[0.04]">

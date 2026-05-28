@@ -67,6 +67,8 @@
   "collection.totalPayable": "एकूण देणे",
   
   "customer.title": "विक्री व्यवस्थापन",
+  "customer.customerId": "ग्राहक आयडी",
+  "customer.customerName": "ग्राहकाचे नाव",
   "customer.register": "ग्राहक नोंदणी",
   "customer.products": "उत्पादने",
   "customer.newBill": "नवीन बिल",

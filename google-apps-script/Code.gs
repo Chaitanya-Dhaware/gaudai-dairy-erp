@@ -525,8 +525,8 @@ function autoSetupSheets() {
         defaultProds.forEach(function(row) { prodSheet.appendRow(row); });
       }
 
-      createSheetIfMissing(ss, "Sales", ["bill_id", "customer_id", "date", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
-      createSheetIfMissing(ss, "Payments", ["payment_id", "customer_id", "amount", "date", "timestamp"]);
+      createSheetIfMissing(ss, "Sales", ["bill_id", "customer_id", "customer_name", "date", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
+      createSheetIfMissing(ss, "Payments", ["payment_id", "customer_id", "customer_name", "amount", "date", "timestamp"]);
       
       var defaultSheet = ss.getSheetByName("Sheet1");
       if (defaultSheet && ss.getSheets().length > 1) {
@@ -572,6 +572,36 @@ function getFarmerNameById(ss, farmerId) {
     }
   } catch(e) {}
   return farmerId;
+}
+
+/** Look up customer shop name from Customers sheet by customer_id */
+function getCustomerNameById(ss, customerId) {
+  try {
+    var sheet = ss.getSheetByName("Customers");
+    if (!sheet) return customerId;
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0] === customerId) return data[i][1] || customerId;
+    }
+  } catch(e) {}
+  return customerId;
+}
+
+/** Helper to check if a cell value is actually a shifted value (like a date or number) rather than a name */
+function isShiftedValue(val) {
+  if (val === undefined || val === null) return false;
+  if (val instanceof Date) return true;
+  if (typeof val === 'number') return true;
+  var str = String(val).trim();
+  if (str === "") return false;
+  if (!isNaN(Number(str))) return true;
+  var parsedDate = Date.parse(str);
+  if (!isNaN(parsedDate)) {
+    if (/[\d\/\-:]/.test(str) || /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(str)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -823,6 +853,198 @@ function reformatPayments(ss) {
   }
 }
 
+function reformatSales(ss) {
+  try {
+    if (!ss) {
+      loadConfigFromProperties();
+      ss = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
+    }
+    Logger.log("reformatSales: Starting schema check...");
+    var sheets = ss.getSheets();
+    var customersSheet = ss.getSheetByName("Customers");
+    var customerMap = {};
+    if (customersSheet) {
+      var cd = customersSheet.getDataRange().getValues();
+      for (var c = 1; c < cd.length; c++) {
+        var cid = String(cd[c][0] || "").trim().toUpperCase();
+        if (cid) {
+          customerMap[cid] = cd[c][1] || cd[c][0];
+        }
+      }
+      Logger.log("reformatSales: Loaded " + Object.keys(customerMap).length + " customers from Customers sheet.");
+    }
+    
+    var salesSheet = ss.getSheetByName("Sales");
+    if (!salesSheet) {
+      Logger.log("reformatSales: Sales sheet not found. Skipping.");
+      return;
+    }
+    var lastRow = salesSheet.getLastRow();
+    if (lastRow < 1) return;
+    
+    var headerRange = salesSheet.getRange(1, 1, 1, salesSheet.getLastColumn());
+    var header = headerRange.getValues()[0];
+    Logger.log("reformatSales: Current headers = " + JSON.stringify(header));
+    
+    var customerNameColIndex = header.indexOf("customer_name");
+    
+    if (customerNameColIndex === -1) {
+      Logger.log("reformatSales: Column 'customer_name' is missing. Inserting at column C...");
+      // Insert new column at index 3 (Column C) for customer_name
+      salesSheet.insertColumnAfter(2);
+      salesSheet.getRange(1, 3).setValue("customer_name").setFontWeight("bold");
+      
+      // Refresh last row and header
+      lastRow = salesSheet.getLastRow();
+      header = salesSheet.getRange(1, 1, 1, salesSheet.getLastColumn()).getValues()[0];
+      
+      // Fill existing rows with customer name looked up by customer_id (which is at column 2 / index 1)
+      if (lastRow > 1) {
+        var dataRange = salesSheet.getRange(2, 1, lastRow - 1, salesSheet.getLastColumn());
+        var rows = dataRange.getValues();
+        for (var r = 0; r < rows.length; r++) {
+          var cid = String(rows[r][1] || "").trim().toUpperCase(); // Column B is index 1
+          rows[r][2] = customerMap[cid] || rows[r][1] || cid; // Write to Column C (index 2)
+        }
+        dataRange.setValues(rows);
+      }
+      Logger.log("reformatSales: Column C inserted and backfilled.");
+    }
+    
+    // Make sure header formatting is correct
+    salesSheet.getRange(1, 1).setValue("bill_id").setFontWeight("bold");
+    salesSheet.getRange(1, 2).setValue("customer_id").setFontWeight("bold");
+    salesSheet.getRange(1, 3).setValue("customer_name").setFontWeight("bold");
+    
+    // Pass 2: Clean up any shifted rows in Sales (where Col C is a date or something else instead of a name)
+    lastRow = salesSheet.getLastRow();
+    if (lastRow > 1) {
+      var dataRange = salesSheet.getRange(2, 1, lastRow - 1, salesSheet.getLastColumn());
+      var rows = dataRange.getValues();
+      var changed = false;
+      
+      for (var r = 0; r < rows.length; r++) {
+        var row = rows[r];
+        var cid = String(row[1] || "").trim().toUpperCase();
+        var colCVal = row[2];
+        
+        // If Customer ID is in map, but Col C is shifted (a date, amount, etc.)
+        if (cid && customerMap.hasOwnProperty(cid) && isShiftedValue(colCVal)) {
+          var name = customerMap[cid] || cid;
+          Logger.log("reformatSales: Found shifted row at Sales line " + (r + 2) + " (Col B='" + row[1] + "', Col C='" + row[2] + "'). Inserting customer name '" + name + "'...");
+          // Insert name at index 2 (shifts customer_id to index 3, date to index 4, etc.)
+          row.splice(2, 0, name);
+          
+          // Truncate to match target sheet width
+          rows[r] = row.slice(0, salesSheet.getLastColumn());
+          changed = true;
+        }
+      }
+      
+      if (changed) {
+        Logger.log("reformatSales: Saving corrected rows to Sales...");
+        dataRange.setValues(rows);
+        Logger.log("reformatSales: Saved successfully.");
+      } else {
+        Logger.log("reformatSales: No shifted rows detected in Sales.");
+      }
+    }
+  } catch(e) {
+    Logger.log("reformatSales error: " + e.toString());
+    logErrorToSheets("reformatSales error: " + e.toString());
+  }
+}
+
+function reformatCustomerPayments(ss) {
+  try {
+    if (!ss) {
+      loadConfigFromProperties();
+      ss = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
+    }
+    Logger.log("reformatCustomerPayments: Starting schema check...");
+    var paySheet = ss.getSheetByName("Payments");
+    if (!paySheet) {
+      Logger.log("reformatCustomerPayments: Payments sheet not found. Skipping.");
+      return;
+    }
+    var lastRow = paySheet.getLastRow();
+    if (lastRow < 1) return;
+    
+    var headerRange = paySheet.getRange(1, 1, 1, paySheet.getLastColumn());
+    var header = headerRange.getValues()[0];
+    Logger.log("reformatCustomerPayments: Current headers = " + JSON.stringify(header));
+    
+    var customersSheet = ss.getSheetByName("Customers");
+    var customerMap = {};
+    if (customersSheet) {
+      var cd = customersSheet.getDataRange().getValues();
+      for (var c = 1; c < cd.length; c++) {
+        var cid = String(cd[c][0] || "").trim().toUpperCase();
+        if (cid) {
+          customerMap[cid] = cd[c][1] || cd[c][0];
+        }
+      }
+    }
+
+    var customerNameColIndex = header.indexOf("customer_name");
+    if (customerNameColIndex === -1) {
+      Logger.log("reformatCustomerPayments: Column 'customer_name' is missing. Inserting at column C...");
+      // Insert a new column C for customer_name
+      paySheet.insertColumnAfter(2);
+      paySheet.getRange(1, 3).setValue("customer_name").setFontWeight("bold");
+      
+      // Refresh header and lastRow
+      lastRow = paySheet.getLastRow();
+      header = paySheet.getRange(1, 1, 1, paySheet.getLastColumn()).getValues()[0];
+      
+      // Fill in customer_name for all rows
+      if (lastRow > 1) {
+        var rowsRange = paySheet.getRange(2, 1, lastRow - 1, paySheet.getLastColumn());
+        var rows = rowsRange.getValues();
+        for (var r = 0; r < rows.length; r++) {
+          var cid = String(rows[r][1] || "").trim().toUpperCase();
+          rows[r][2] = customerMap[cid] || rows[r][1] || cid;
+        }
+        rowsRange.setValues(rows);
+      }
+      Logger.log("reformatCustomerPayments: Column C inserted and backfilled.");
+    }
+    
+    // Pass 2: Clean up any shifted rows in Payments (where Col C is a number instead of a name)
+    lastRow = paySheet.getLastRow();
+    if (lastRow > 1) {
+      var rowsRange = paySheet.getRange(2, 1, lastRow - 1, paySheet.getLastColumn());
+      var rows = rowsRange.getValues();
+      var changed = false;
+      for (var r = 0; r < rows.length; r++) {
+        var row = rows[r];
+        var cid = String(row[1] || "").trim().toUpperCase();
+        var colCVal = row[2];
+        
+        // If Customer ID is in map, but Col C is shifted (amount, date, etc.)
+        if (cid && customerMap.hasOwnProperty(cid) && isShiftedValue(colCVal)) {
+          var name = customerMap[cid] || cid;
+          Logger.log("reformatCustomerPayments: Found shifted row at line " + (r + 2) + " (Col B='" + row[1] + "', Col C='" + row[2] + "'). Inserting customer name '" + name + "'...");
+          // Shifted row! Splice name at index 2
+          row.splice(2, 0, name);
+          rows[r] = row.slice(0, paySheet.getLastColumn());
+          changed = true;
+        }
+      }
+      if (changed) {
+        Logger.log("reformatCustomerPayments: Saving corrected rows to Payments...");
+        rowsRange.setValues(rows);
+        Logger.log("reformatCustomerPayments: Saved successfully.");
+      } else {
+        Logger.log("reformatCustomerPayments: No shifted rows detected in Payments.");
+      }
+    }
+  } catch(e) {
+    Logger.log("reformatCustomerPayments error: " + e.toString());
+    logErrorToSheets("reformatCustomerPayments error: " + e.toString());
+  }
+}
+
 /**
  * Manual trigger function to run migrations and view execution logs directly.
  * Choose this from the Run toolbar in Apps Script editor and click 'Run'.
@@ -830,27 +1052,44 @@ function reformatPayments(ss) {
 function runManualMigration() {
   Logger.log("🚀 STARTING MANUAL MIGRATION RUN...");
   loadConfigFromProperties();
+  
   Logger.log("Collection Spreadsheet ID: " + CONFIG.COLLECTION_DB_ID);
-  
-  if (!CONFIG.COLLECTION_DB_ID) {
-    Logger.log("❌ ERROR: COLLECTION_DB_ID is not configured in properties!");
-    return;
+  if (CONFIG.COLLECTION_DB_ID) {
+    try {
+      var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+      Logger.log("Spreadsheet successfully opened: " + ss.getName());
+      
+      Logger.log("--- Phase 1: Reformatting Milk Collections ---");
+      reformatMilkCollections(ss);
+      
+      Logger.log("--- Phase 2: Reformatting Payments ---");
+      reformatPayments(ss);
+    } catch(e) {
+      Logger.log("❌ ERROR during Collection DB run: " + e.toString());
+    }
+  } else {
+    Logger.log("⚠️ COLLECTION_DB_ID is not configured.");
   }
   
-  try {
-    var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
-    Logger.log("Spreadsheet successfully opened: " + ss.getName());
-    
-    Logger.log("--- Phase 1: Reformatting Milk Collections ---");
-    reformatMilkCollections(ss);
-    
-    Logger.log("--- Phase 2: Reformatting Payments ---");
-    reformatPayments(ss);
-    
-    Logger.log("🏁 MANUAL MIGRATION COMPLETED SUCCESSFULLY!");
-  } catch(e) {
-    Logger.log("❌ CRITICAL ERROR during manual run: " + e.toString());
+  Logger.log("Customer Spreadsheet ID: " + CONFIG.CUSTOMER_DB_ID);
+  if (CONFIG.CUSTOMER_DB_ID) {
+    try {
+      var ssCust = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
+      Logger.log("Spreadsheet successfully opened: " + ssCust.getName());
+      
+      Logger.log("--- Phase 3: Reformatting Sales ---");
+      reformatSales(ssCust);
+      
+      Logger.log("--- Phase 4: Reformatting Customer Payments ---");
+      reformatCustomerPayments(ssCust);
+    } catch(e) {
+      Logger.log("❌ ERROR during Customer DB run: " + e.toString());
+    }
+  } else {
+    Logger.log("⚠️ CUSTOMER_DB_ID is not configured.");
   }
+  
+  Logger.log("🏁 MANUAL MIGRATION COMPLETED SUCCESSFULLY!");
 }
 
 /**
@@ -1376,9 +1615,12 @@ function addSale(data) {
 
   var status = dueVal <= 0 ? 'Paid' : (paidVal > 0 ? 'Partial' : 'Pending');
 
+  var customerName = getCustomerNameById(ss, data.customer_id);
+
   var rowData = [
     billId,
     data.customer_id,
+    customerName,
     data.date,
     totalVal,
     paidVal,
@@ -1406,6 +1648,7 @@ function addSale(data) {
     data: {
       bill_id: billId,
       customer_id: data.customer_id,
+      customer_name: customerName,
       date: data.date,
       items: data.items,
       total_amount: totalVal,
@@ -1428,9 +1671,11 @@ function recordPayment(customerId, amount) {
       
       // Log payment history
       var paySheet = ss.getSheetByName("Payments");
+      var customerName = getCustomerNameById(ss, customerId);
       paySheet.appendRow([
         "PAY" + Date.now(),
         customerId,
+        customerName,
         amount,
         new Date().toISOString().split('T')[0],
         new Date().toISOString()
@@ -1443,11 +1688,15 @@ function recordPayment(customerId, amount) {
 
 function getSalesHistory() {
   var ss = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
+  // Migrate existing data to new format (bill_id col A, customer_id col B, customer_name col C)
+  reformatSales(ss);
+  reformatCustomerPayments(ss);
+  
   var sheet = ss.getSheetByName("Sales");
   var values = sheet.getDataRange().getValues();
   var list = [];
   for (var i = values.length - 1; i >= 1; i--) {
-    var rawDate = values[i][2];
+    var rawDate = values[i][3];
     var formattedDate = "";
     if (rawDate) {
       if (rawDate instanceof Date) {
@@ -1459,11 +1708,12 @@ function getSalesHistory() {
     list.push({
       bill_id: values[i][0],
       customer_id: values[i][1],
+      customer_name: values[i][2],
       date: formattedDate,
-      total_amount: parseSafeFloat(values[i][3]),
-      paid_amount: parseSafeFloat(values[i][4]),
-      due_amount: parseSafeFloat(values[i][5]),
-      status: values[i][6]
+      total_amount: parseSafeFloat(values[i][4]),
+      paid_amount: parseSafeFloat(values[i][5]),
+      due_amount: parseSafeFloat(values[i][6]),
+      status: values[i][7]
     });
   }
   return { success: true, data: list };
@@ -1909,9 +2159,11 @@ function importBackupData(data) {
         var existingIds = sheet.getDataRange().getValues().map(function(r) { return r[0]; });
         data.sales.forEach(function(s) {
           if (s.bill_id && existingIds.indexOf(s.bill_id) === -1) {
+            var custName = s.customer_name || getCustomerNameById(ssCust, s.customer_id);
             var rowData = [
               s.bill_id,
               s.customer_id || "",
+              custName,
               s.date || "",
               parseSafeFloat(s.total_amount),
               parseSafeFloat(s.paid_amount),

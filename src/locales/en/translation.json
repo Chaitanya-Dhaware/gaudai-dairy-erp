@@ -67,6 +67,8 @@
   "collection.totalPayable": "Total Payable",
   
   "customer.title": "Sales Management",
+  "customer.customerId": "Customer ID",
+  "customer.customerName": "Customer Name",
   "customer.register": "Customer Registration",
   "customer.products": "Products",
   "customer.newBill": "New Bill",
