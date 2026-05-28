@@ -113,7 +113,7 @@ async function syncWriteToFirestore(action, responseData, payload) {
   try {
     switch (action) {
       case 'registerFarmer': {
-        const farmer = responseData.data;
+        const farmer = { ...payload, ...responseData.data };
         if (farmer && farmer.farmer_id) {
           await setDoc(doc(db, 'farmers', farmer.farmer_id), farmer);
         }
@@ -161,14 +161,14 @@ async function syncWriteToFirestore(action, responseData, payload) {
         break;
       }
       case 'addCustomer': {
-        const customer = responseData.data;
+        const customer = { ...payload, ...responseData.data };
         if (customer && customer.customer_id) {
           await setDoc(doc(db, 'customers', customer.customer_id), customer);
         }
         break;
       }
       case 'addProduct': {
-        const product = responseData.data;
+        const product = { ...payload, ...responseData.data };
         if (product && product.product_id) {
           await setDoc(doc(db, 'products', product.product_id), product);
         }
@@ -508,12 +508,7 @@ export async function readFromFirestore(action) {
 export async function callAPI(action, payload = {}) {
   let response;
 
-  const firestoreDirectActions = [
-    'registerFarmer', 'deleteFarmer', 'getFarmerList',
-    'addCustomer', 'getCustomerList',
-    'addProduct', 'updateProduct', 'getProductList',
-    'getSettings', 'updateSettings'
-  ];
+  const firestoreDirectActions = [];
 
   if (IS_MOCK_MODE) {
     initMockDB();
