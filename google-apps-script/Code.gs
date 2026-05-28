@@ -700,12 +700,23 @@ function reformatMilkCollections(ss) {
         
         for (var r = 0; r < rows.length; r++) {
           var row = rows[r];
-          var colBVal = String(row[1] || "").trim().toUpperCase();
+          var colBVal = String(row[1] || "").trim();
           var colCVal = String(row[2] || "").trim().toUpperCase();
           
+          if (colCVal && farmerMap.hasOwnProperty(colCVal)) {
+            var name = farmerMap[colCVal];
+            if (colBVal === "") {
+              // Just backfill the name in-place
+              Logger.log("reformatMilkCollections: Backfilling missing farmer name '" + name + "' at " + sh.getName() + " line " + (r + 2));
+              row[1] = name;
+              changed = true;
+            }
+          }
+          
+          var colBValUpper = colBVal.toUpperCase();
           // Check if Col B (index 1) matches a farmer ID format/entry, and Col C is not a farmer ID
-          if (colBVal && farmerMap.hasOwnProperty(colBVal) && !farmerMap.hasOwnProperty(colCVal)) {
-            var fid = colBVal;
+          if (colBValUpper && farmerMap.hasOwnProperty(colBValUpper) && !farmerMap.hasOwnProperty(colCVal)) {
+            var fid = colBValUpper;
             var name = farmerMap[fid] || fid;
             Logger.log("reformatMilkCollections: Found shifted row at " + sh.getName() + " line " + (r + 2) + " (Col B='" + row[1] + "', Col C='" + row[2] + "'). Inserting farmer name '" + name + "'...");
             
@@ -824,16 +835,21 @@ function reformatPayments(ss) {
       for (var r = 0; r < rows.length; r++) {
         var row = rows[r];
         var fid = String(row[1] || "").trim().toUpperCase();
-        var colCVal = String(row[2] || "").trim().toUpperCase();
+        var colCVal = row[2];
         
-        // If farmer ID is in map, but Col C is NOT the farmer name and looks like a number/amount
         if (fid && farmerMap.hasOwnProperty(fid)) {
-          var expectedName = farmerMap[fid];
-          var expectedNameUpper = expectedName.toUpperCase();
-          if (expectedName && colCVal !== expectedNameUpper && (typeof row[2] === 'number' || !isNaN(Number(row[2])))) {
-            Logger.log("reformatPayments: Found shifted row at line " + (r + 2) + " (Col B='" + row[1] + "', Col C='" + row[2] + "'). Inserting farmer name '" + expectedName + "'...");
+          var name = farmerMap[fid];
+          var colCStr = String(colCVal || "").trim();
+          
+          if (colCStr === "") {
+            // Just backfill the name in-place
+            Logger.log("reformatPayments: Backfilling missing farmer name '" + name + "' at line " + (r + 2));
+            row[2] = name;
+            changed = true;
+          } else if (isShiftedValue(colCVal)) {
             // Shifted row! Splice name at index 2
-            row.splice(2, 0, expectedName);
+            Logger.log("reformatPayments: Found shifted row at line " + (r + 2) + " (Col B='" + row[1] + "', Col C='" + row[2] + "'). Inserting farmer name '" + name + "'...");
+            row.splice(2, 0, name);
             rows[r] = row.slice(0, paySheet.getLastColumn());
             changed = true;
           }
@@ -928,16 +944,25 @@ function reformatSales(ss) {
         var cid = String(row[1] || "").trim().toUpperCase();
         var colCVal = row[2];
         
-        // If Customer ID is in map, but Col C is shifted (a date, amount, etc.)
-        if (cid && customerMap.hasOwnProperty(cid) && isShiftedValue(colCVal)) {
+        if (cid && customerMap.hasOwnProperty(cid)) {
           var name = customerMap[cid] || cid;
-          Logger.log("reformatSales: Found shifted row at Sales line " + (r + 2) + " (Col B='" + row[1] + "', Col C='" + row[2] + "'). Inserting customer name '" + name + "'...");
-          // Insert name at index 2 (shifts customer_id to index 3, date to index 4, etc.)
-          row.splice(2, 0, name);
+          var colCStr = String(colCVal || "").trim();
           
-          // Truncate to match target sheet width
-          rows[r] = row.slice(0, salesSheet.getLastColumn());
-          changed = true;
+          if (colCStr === "") {
+            // Just backfill the name in-place
+            Logger.log("reformatSales: Backfilling missing customer name '" + name + "' at line " + (r + 2));
+            row[2] = name;
+            changed = true;
+          } else if (isShiftedValue(colCVal)) {
+            // Shifted row! Splice name at index 2
+            Logger.log("reformatSales: Found shifted row at Sales line " + (r + 2) + " (Col B='" + row[1] + "', Col C='" + row[2] + "'). Inserting customer name '" + name + "'...");
+            // Insert name at index 2 (shifts customer_id to index 3, date to index 4, etc.)
+            row.splice(2, 0, name);
+            
+            // Truncate to match target sheet width
+            rows[r] = row.slice(0, salesSheet.getLastColumn());
+            changed = true;
+          }
         }
       }
       
@@ -1021,14 +1046,22 @@ function reformatCustomerPayments(ss) {
         var cid = String(row[1] || "").trim().toUpperCase();
         var colCVal = row[2];
         
-        // If Customer ID is in map, but Col C is shifted (amount, date, etc.)
-        if (cid && customerMap.hasOwnProperty(cid) && isShiftedValue(colCVal)) {
+        if (cid && customerMap.hasOwnProperty(cid)) {
           var name = customerMap[cid] || cid;
-          Logger.log("reformatCustomerPayments: Found shifted row at line " + (r + 2) + " (Col B='" + row[1] + "', Col C='" + row[2] + "'). Inserting customer name '" + name + "'...");
-          // Shifted row! Splice name at index 2
-          row.splice(2, 0, name);
-          rows[r] = row.slice(0, paySheet.getLastColumn());
-          changed = true;
+          var colCStr = String(colCVal || "").trim();
+          
+          if (colCStr === "") {
+            // Just backfill the name in-place
+            Logger.log("reformatCustomerPayments: Backfilling missing customer name '" + name + "' at line " + (r + 2));
+            row[2] = name;
+            changed = true;
+          } else if (isShiftedValue(colCVal)) {
+            // Shifted row! Splice name at index 2
+            Logger.log("reformatCustomerPayments: Found shifted row at line " + (r + 2) + " (Col B='" + row[1] + "', Col C='" + row[2] + "'). Inserting customer name '" + name + "'...");
+            row.splice(2, 0, name);
+            rows[r] = row.slice(0, paySheet.getLastColumn());
+            changed = true;
+          }
         }
       }
       if (changed) {
