@@ -391,9 +391,9 @@ function MilkCollectionEntry({
         </h3>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-textSecondary mb-2">{t('customer.selectCustomer')} *</label>
+              <label className="block text-xs font-semibold text-textSecondary mb-2">{t('collection.entryId')} *</label>
               <select
                 value={selectedFarmerId}
                 onChange={(e) => {
@@ -405,10 +405,32 @@ function MilkCollectionEntry({
                 className="w-full px-3 py-2.5 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary font-semibold"
                 required
               >
-                <option value="">-- {isMarathi ? 'निवडा' : 'Select Farmer'} --</option>
+                <option value="">-- {isMarathi ? 'निवडा' : 'Select ID'} --</option>
                 {farmers.map(f => (
                   <option key={f.farmer_id} value={f.farmer_id}>
-                    {f.farmer_id} - {f.name} ({f.milk_type})
+                    {f.farmer_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-textSecondary mb-2">{t('collection.farmerName')} *</label>
+              <select
+                value={selectedFarmerId}
+                onChange={(e) => {
+                  const nextId = e.target.value;
+                  setSelectedFarmerId(nextId);
+                  const f = farmers.find(farm => farm.farmer_id === nextId);
+                  if (f) setMilkType(f.milk_type);
+                }}
+                className="w-full px-3 py-2.5 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary font-semibold"
+                required
+              >
+                <option value="">-- {isMarathi ? 'निवडा' : 'Select Name'} --</option>
+                {farmers.map(f => (
+                  <option key={f.farmer_id} value={f.farmer_id}>
+                    {f.name}
                   </option>
                 ))}
               </select>
@@ -420,7 +442,7 @@ function MilkCollectionEntry({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary font-mono"
+                className="w-full px-3 py-2.5 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary font-mono"
                 required
               />
             </div>

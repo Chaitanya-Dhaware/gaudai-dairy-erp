@@ -679,6 +679,7 @@ function handleMockAPI(action, payload) {
       const newCollection = {
         entry_id: `E${collections.length + 100}`,
         farmer_id: payload.farmer_id,
+        farmer_name: farmers.find(f => f.farmer_id === payload.farmer_id)?.name || '',
         date: payload.date || new Date().toISOString().split('T')[0],
         milk_type: payload.milk_type,
         quantity: parseFloat(payload.quantity),

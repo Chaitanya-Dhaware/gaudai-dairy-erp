@@ -15,7 +15,7 @@ export function BottomBar() {
   const navigation = [
     { id: 'dashboard', name: t('nav.collection').split(' ')[0] === 'संकलन' ? 'डॅशबोर्ड' : 'Home', icon: Home },
     { id: 'collection', name: t('nav.collection').split(' ')[0] === 'संकलन' ? 'संकलन' : 'Col', icon: Droplet },
-    { id: 'customers', name: t('nav.customers').split(' ')[0] === 'संकलन' ? 'ग्राहक' : 'Cust', icon: Users },
+    { id: 'customers', name: t('nav.collection').split(' ')[0] === 'संकलन' ? 'विक्री' : 'Sales', icon: Users },
     { id: 'expenses', name: t('nav.expenses').split(' ')[0] === 'संकलन' ? 'खर्च' : 'Exp', icon: Receipt },
     { id: 'accounts', name: t('nav.accounts').split(' ')[0] === 'संकलन' ? 'हिशोब' : 'Acc', icon: PieChart },
   ];

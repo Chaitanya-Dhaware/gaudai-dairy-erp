@@ -485,7 +485,7 @@ function autoSetupSheets() {
     try {
       var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
       createSheetIfMissing(ss, "Farmers", ["farmer_id", "name", "mobile", "address", "milk_type", "current_due", "created_at"]);
-      createSheetIfMissing(ss, "Milk_Collections", ["farmer_name", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
+      createSheetIfMissing(ss, "Milk_Collections", ["entry_id", "farmer_name", "farmer_id", "date", "milk_type", "quantity", "fat", "snf", "calculated_rate", "total_amount", "paid_amount", "due_amount", "status", "timestamp"]);
       createSheetIfMissing(ss, "Payments", ["payment_id", "farmer_id", "farmer_name", "amount", "date", "notes", "timestamp"]);
       
       var defaultSheet = ss.getSheetByName("Sheet1");
@@ -582,6 +582,11 @@ function getFarmerNameById(ss, farmerId) {
  */
 function reformatMilkCollections(ss) {
   try {
+    if (!ss) {
+      loadConfigFromProperties();
+      ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+    }
+    Logger.log("reformatMilkCollections: Starting schema check...");
     var tz = "Asia/Kolkata";
     var sheets = ss.getSheets();
     var farmersSheet = ss.getSheetByName("Farmers");
@@ -589,8 +594,14 @@ function reformatMilkCollections(ss) {
     if (farmersSheet) {
       var fd = farmersSheet.getDataRange().getValues();
       for (var f = 1; f < fd.length; f++) {
-        farmerMap[fd[f][0]] = fd[f][1] || fd[f][0];
+        var fid = String(fd[f][0] || "").trim().toUpperCase();
+        if (fid) {
+          farmerMap[fid] = fd[f][1] || fd[f][0];
+        }
       }
+      Logger.log("reformatMilkCollections: Loaded " + Object.keys(farmerMap).length + " farmers from Farmers sheet.");
+    } else {
+      Logger.log("reformatMilkCollections: WARNING: Farmers sheet not found.");
     }
     
     var targetSheets = [];
@@ -603,89 +614,242 @@ function reformatMilkCollections(ss) {
     
     for (var t = 0; t < targetSheets.length; t++) {
       var sh = targetSheets[t];
+      Logger.log("reformatMilkCollections: Checking sheet '" + sh.getName() + "'...");
       var lastRow = sh.getLastRow();
-      if (lastRow < 1) continue;
-      
-      // Check & update header row
-      var header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-      var alreadyMigrated = header[0] === "farmer_name";
-      
-      // Update col A header
-      sh.getRange(1, 1).setValue("farmer_name");
-      // Update col M header
-      if (header.length >= 13) sh.getRange(1, 13).setValue("time");
-      
-      if (lastRow <= 1) continue;
-      
-      var dataRange = sh.getRange(2, 1, lastRow - 1, Math.max(sh.getLastColumn(), 13));
-      var rows = dataRange.getValues();
-      var changed = false;
-      
-      for (var r = 0; r < rows.length; r++) {
-        // Col A: if it looks like an entry_id (starts with E and long number), replace with farmer name
-        var colA = String(rows[r][0] || "");
-        if (!alreadyMigrated && (colA.match(/^E\d{10,}$/) || colA === "")) {
-          var fid = String(rows[r][1] || "");
-          rows[r][0] = farmerMap[fid] || fid;
-          changed = true;
-        }
-        // Col M: convert ISO timestamp to time-only
-        var colM = rows[r][12];
-        if (colM) {
-          var colMStr = String(colM);
-          // Only convert if it looks like a full ISO date or Date object
-          if (colMStr.indexOf("T") !== -1 || colM instanceof Date) {
-            try {
-              var d = colM instanceof Date ? colM : new Date(colMStr);
-              rows[r][12] = Utilities.formatDate(d, tz, "hh:mm a");
-              changed = true;
-            } catch(ex) {}
-          }
-        }
+      if (lastRow < 1) {
+        Logger.log("reformatMilkCollections: Sheet '" + sh.getName() + "' is empty. Skipping.");
+        continue;
       }
       
-      if (changed) dataRange.setValues(rows);
+      // Get current header
+      var headerRange = sh.getRange(1, 1, 1, sh.getLastColumn());
+      var header = headerRange.getValues()[0];
+      Logger.log("reformatMilkCollections: Current headers = " + JSON.stringify(header));
+      
+      // Check if "farmer_name" column is missing
+      var farmerNameColIndex = header.indexOf("farmer_name");
+      
+      if (farmerNameColIndex === -1) {
+        Logger.log("reformatMilkCollections: Column 'farmer_name' is missing. Inserting at column B...");
+        // Insert new column at index 2 (Column B) for farmer_name
+        sh.insertColumnAfter(1);
+        sh.getRange(1, 2).setValue("farmer_name").setFontWeight("bold");
+        
+        // Refresh last row and header
+        lastRow = sh.getLastRow();
+        header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+        
+        // Fill existing rows with farmer name looked up by farmer_id (which has shifted to column 3 / index 2)
+        if (lastRow > 1) {
+          var dataRange = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn());
+          var rows = dataRange.getValues();
+          for (var r = 0; r < rows.length; r++) {
+            var fid = String(rows[r][2] || "").trim().toUpperCase(); // Column C is index 2
+            rows[r][1] = farmerMap[fid] || rows[r][2] || fid; // Write to Column B (index 1)
+          }
+          dataRange.setValues(rows);
+        }
+        Logger.log("reformatMilkCollections: Column B inserted and backfilled.");
+      }
+      
+      // Make sure first column is "entry_id" and second is "farmer_name"
+      sh.getRange(1, 1).setValue("entry_id").setFontWeight("bold");
+      sh.getRange(1, 2).setValue("farmer_name").setFontWeight("bold");
+      
+      // Update col N header if exists (time header)
+      if (sh.getLastColumn() >= 14) {
+        sh.getRange(1, 14).setValue("time").setFontWeight("bold");
+      }
+      
+      // Pass 2: Clean up any shifted rows (where Col B is a farmer ID instead of a name)
+      lastRow = sh.getLastRow();
+      if (lastRow > 1) {
+        var dataRange = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn());
+        var rows = dataRange.getValues();
+        var changed = false;
+        
+        for (var r = 0; r < rows.length; r++) {
+          var row = rows[r];
+          var colBVal = String(row[1] || "").trim().toUpperCase();
+          var colCVal = String(row[2] || "").trim().toUpperCase();
+          
+          // Check if Col B (index 1) matches a farmer ID format/entry, and Col C is not a farmer ID
+          if (colBVal && farmerMap.hasOwnProperty(colBVal) && !farmerMap.hasOwnProperty(colCVal)) {
+            var fid = colBVal;
+            var name = farmerMap[fid] || fid;
+            Logger.log("reformatMilkCollections: Found shifted row at " + sh.getName() + " line " + (r + 2) + " (Col B='" + row[1] + "', Col C='" + row[2] + "'). Inserting farmer name '" + name + "'...");
+            
+            // Insert name at index 1 (shifts farmer_id to index 2, date to index 3, etc.)
+            row.splice(1, 0, name);
+            
+            // Truncate to match target sheet width
+            rows[r] = row.slice(0, sh.getLastColumn());
+            changed = true;
+          }
+        }
+        
+        if (changed) {
+          Logger.log("reformatMilkCollections: Saving corrected rows to '" + sh.getName() + "'...");
+          dataRange.setValues(rows);
+          Logger.log("reformatMilkCollections: Saved successfully.");
+        } else {
+          Logger.log("reformatMilkCollections: No shifted rows detected in '" + sh.getName() + "'.");
+        }
+      }
+
+      // Convert timestamps in Column N (Index 13) to time-only if needed
+      lastRow = sh.getLastRow();
+      if (lastRow > 1) {
+        var timeRange = sh.getRange(2, 14, lastRow - 1, 1);
+        var times = timeRange.getValues();
+        var timeChanged = false;
+        for (var r = 0; r < times.length; r++) {
+          var colNVal = times[r][0];
+          if (colNVal) {
+            var colNStr = String(colNVal);
+            if (colNStr.indexOf("T") !== -1 || colNVal instanceof Date) {
+              try {
+                var d = colNVal instanceof Date ? colNVal : new Date(colNStr);
+                times[r][0] = Utilities.formatDate(d, tz, "hh:mm a");
+                timeChanged = true;
+              } catch(ex) {}
+            }
+          }
+        }
+        if (timeChanged) {
+          timeRange.setValues(times);
+        }
+      }
     }
   } catch(e) {
+    Logger.log("reformatMilkCollections error: " + e.toString());
     logErrorToSheets("reformatMilkCollections error: " + e.toString());
   }
 }
 
 function reformatPayments(ss) {
   try {
+    if (!ss) {
+      loadConfigFromProperties();
+      ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+    }
+    Logger.log("reformatPayments: Starting schema check...");
     var paySheet = ss.getSheetByName("Payments");
-    if (!paySheet) return;
+    if (!paySheet) {
+      Logger.log("reformatPayments: Payments sheet not found. Skipping.");
+      return;
+    }
     var lastRow = paySheet.getLastRow();
-    if (lastRow < 1) return;
+    if (lastRow < 1) {
+      Logger.log("reformatPayments: Payments sheet is empty. Skipping.");
+      return;
+    }
     
-    var header = paySheet.getRange(1, 1, 1, paySheet.getLastColumn()).getValues()[0];
-    if (header.indexOf("farmer_name") !== -1) return; // already reformatted
-    
-    // Insert a new column C for farmer_name
-    paySheet.insertColumnAfter(2);
-    paySheet.getRange(1, 3).setValue("farmer_name").setFontWeight("bold");
-    
-    if (lastRow <= 1) return;
+    var headerRange = paySheet.getRange(1, 1, 1, paySheet.getLastColumn());
+    var header = headerRange.getValues()[0];
     
     var farmersSheet = ss.getSheetByName("Farmers");
     var farmerMap = {};
     if (farmersSheet) {
       var fd = farmersSheet.getDataRange().getValues();
       for (var f = 1; f < fd.length; f++) {
-        farmerMap[fd[f][0]] = fd[f][1] || fd[f][0];
+        var fid = String(fd[f][0] || "").trim().toUpperCase();
+        if (fid) {
+          farmerMap[fid] = fd[f][1] || fd[f][0];
+        }
       }
+      Logger.log("reformatPayments: Loaded " + Object.keys(farmerMap).length + " farmers from Farmers sheet.");
+    }
+
+    var farmerNameColIndex = header.indexOf("farmer_name");
+    if (farmerNameColIndex === -1) {
+      Logger.log("reformatPayments: Column 'farmer_name' is missing. Inserting at column C...");
+      // Insert a new column C for farmer_name
+      paySheet.insertColumnAfter(2);
+      paySheet.getRange(1, 3).setValue("farmer_name").setFontWeight("bold");
+      
+      // Refresh header and lastRow
+      lastRow = paySheet.getLastRow();
+      header = paySheet.getRange(1, 1, 1, paySheet.getLastColumn()).getValues()[0];
+      
+      // Fill in farmer_name for all rows
+      if (lastRow > 1) {
+        var rowsRange = paySheet.getRange(2, 1, lastRow - 1, paySheet.getLastColumn());
+        var rows = rowsRange.getValues();
+        for (var r = 0; r < rows.length; r++) {
+          var fid = String(rows[r][1] || "").trim().toUpperCase();
+          rows[r][2] = farmerMap[fid] || rows[r][1] || fid;
+        }
+        rowsRange.setValues(rows);
+      }
+      Logger.log("reformatPayments: Column C inserted and backfilled.");
     }
     
-    // Fill in farmer_name for all rows
-    var rowsRange = paySheet.getRange(2, 1, lastRow - 1, 3);
-    var rows = rowsRange.getValues();
-    for (var r = 0; r < rows.length; r++) {
-      var fid = String(rows[r][1] || "");
-      rows[r][2] = farmerMap[fid] || fid;
+    // Pass 2: Clean up any shifted rows in Payments (where Col C is a number instead of a name)
+    lastRow = paySheet.getLastRow();
+    if (lastRow > 1) {
+      var rowsRange = paySheet.getRange(2, 1, lastRow - 1, paySheet.getLastColumn());
+      var rows = rowsRange.getValues();
+      var changed = false;
+      for (var r = 0; r < rows.length; r++) {
+        var row = rows[r];
+        var fid = String(row[1] || "").trim().toUpperCase();
+        var colCVal = String(row[2] || "").trim().toUpperCase();
+        
+        // If farmer ID is in map, but Col C is NOT the farmer name and looks like a number/amount
+        if (fid && farmerMap.hasOwnProperty(fid)) {
+          var expectedName = farmerMap[fid];
+          var expectedNameUpper = expectedName.toUpperCase();
+          if (expectedName && colCVal !== expectedNameUpper && (typeof row[2] === 'number' || !isNaN(Number(row[2])))) {
+            Logger.log("reformatPayments: Found shifted row at line " + (r + 2) + " (Col B='" + row[1] + "', Col C='" + row[2] + "'). Inserting farmer name '" + expectedName + "'...");
+            // Shifted row! Splice name at index 2
+            row.splice(2, 0, expectedName);
+            rows[r] = row.slice(0, paySheet.getLastColumn());
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        Logger.log("reformatPayments: Saving corrected rows to Payments...");
+        rowsRange.setValues(rows);
+        Logger.log("reformatPayments: Saved successfully.");
+      } else {
+        Logger.log("reformatPayments: No shifted rows detected in Payments.");
+      }
     }
-    rowsRange.setValues(rows);
   } catch(e) {
+    Logger.log("reformatPayments error: " + e.toString());
     logErrorToSheets("reformatPayments error: " + e.toString());
+  }
+}
+
+/**
+ * Manual trigger function to run migrations and view execution logs directly.
+ * Choose this from the Run toolbar in Apps Script editor and click 'Run'.
+ */
+function runManualMigration() {
+  Logger.log("🚀 STARTING MANUAL MIGRATION RUN...");
+  loadConfigFromProperties();
+  Logger.log("Collection Spreadsheet ID: " + CONFIG.COLLECTION_DB_ID);
+  
+  if (!CONFIG.COLLECTION_DB_ID) {
+    Logger.log("❌ ERROR: COLLECTION_DB_ID is not configured in properties!");
+    return;
+  }
+  
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+    Logger.log("Spreadsheet successfully opened: " + ss.getName());
+    
+    Logger.log("--- Phase 1: Reformatting Milk Collections ---");
+    reformatMilkCollections(ss);
+    
+    Logger.log("--- Phase 2: Reformatting Payments ---");
+    reformatPayments(ss);
+    
+    Logger.log("🏁 MANUAL MIGRATION COMPLETED SUCCESSFULLY!");
+  } catch(e) {
+    Logger.log("❌ CRITICAL ERROR during manual run: " + e.toString());
   }
 }
 
@@ -695,6 +859,10 @@ function reformatPayments(ss) {
  */
 function ensureFarmerStatusColumn(ss) {
   try {
+    if (!ss) {
+      loadConfigFromProperties();
+      ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+    }
     var sheet = ss.getSheetByName("Farmers");
     if (!sheet) return;
     var lastCol = sheet.getLastColumn();
@@ -910,7 +1078,11 @@ function addMilkCollection(data) {
   // Time only in IST
   var timeOnly = Utilities.formatDate(new Date(), "Asia/Kolkata", "hh:mm a");
 
+  // Generate/receive entry_id
+  var entryId = data.entry_id || ("E" + Date.now());
+
   var rowData = [
+    entryId,
     farmerName,
     data.farmer_id,
     data.date,
@@ -971,6 +1143,7 @@ function addMilkCollection(data) {
     success: true, 
     message: "Milk collection saved successfully",
     data: {
+      entry_id: entryId,
       farmer_name: farmerName,
       farmer_id: data.farmer_id,
       date: data.date,
@@ -990,14 +1163,14 @@ function addMilkCollection(data) {
 
 function getCollectionEntries() {
   var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
-  // Migrate existing data to new format (farmer_name col A, time col M)
+  // Migrate existing data to new format (entry_id col A, farmer_name col B, time col N)
   reformatMilkCollections(ss);
   reformatPayments(ss);
   var sheet = ss.getSheetByName("Milk_Collections");
   var values = sheet.getDataRange().getValues();
   var list = [];
   for (var i = values.length - 1; i >= 1; i--) {
-    var rawDate = values[i][2];
+    var rawDate = values[i][3];
     var formattedDate = "";
     if (rawDate) {
       if (rawDate instanceof Date) {
@@ -1007,19 +1180,20 @@ function getCollectionEntries() {
       }
     }
     list.push({
-      farmer_name: values[i][0],
-      farmer_id: values[i][1],
+      entry_id: values[i][0],
+      farmer_name: values[i][1],
+      farmer_id: values[i][2],
       date: formattedDate,
-      milk_type: values[i][3],
-      quantity: parseSafeFloat(values[i][4]),
-      fat: parseSafeFloat(values[i][5]),
-      snf: parseSafeFloat(values[i][6]),
-      calculated_rate: parseSafeFloat(values[i][7]),
-      total_amount: parseSafeFloat(values[i][8]),
-      paid_amount: parseSafeFloat(values[i][9]),
-      due_amount: parseSafeFloat(values[i][10]),
-      status: values[i][11],
-      time: values[i][12] || ""
+      milk_type: values[i][4],
+      quantity: parseSafeFloat(values[i][5]),
+      fat: parseSafeFloat(values[i][6]),
+      snf: parseSafeFloat(values[i][7]),
+      calculated_rate: parseSafeFloat(values[i][8]),
+      total_amount: parseSafeFloat(values[i][9]),
+      paid_amount: parseSafeFloat(values[i][10]),
+      due_amount: parseSafeFloat(values[i][11]),
+      status: values[i][12],
+      time: values[i][13] || ""
     });
   }
   return { success: true, data: list };
@@ -1032,15 +1206,15 @@ function markFarmerPaid(entryId, amountCleared) {
   var colData = colSheet.getDataRange().getValues();
   
   for (var i = 1; i < colData.length; i++) {
-    // Match: col B is farmer_id. entryId could be farmer_id or legacy E-number.
-    // Try farmer_id match first (col B), or legacy entry check via passed entryId not found in col A.
-    var rowFarmerId = String(colData[i][1] || "");
+    // Match: col C is farmer_id. entryId could be farmer_id or legacy E-number.
+    // Try farmer_id match first (col C / index 2), or legacy entry check via passed entryId not found in col A.
+    var rowFarmerId = String(colData[i][2] || "");
     var matchFound = (rowFarmerId === entryId) || (String(colData[i][0] || "") === entryId);
     if (!matchFound) continue;
     
-    var farmerId = colData[i][1];
-    var due = parseSafeFloat(colData[i][10]);
-    var currentPaid = parseSafeFloat(colData[i][9]);
+    var farmerId = colData[i][2];
+    var due = parseSafeFloat(colData[i][11]);
+    var currentPaid = parseSafeFloat(colData[i][10]);
     if (due <= 0) continue; // already paid, check next row for same farmer
     
     var amtVal = amountCleared !== undefined && amountCleared !== null ? parseSafeFloat(amountCleared) : due;
@@ -1050,9 +1224,9 @@ function markFarmerPaid(entryId, amountCleared) {
     var remainingDue = Math.max(0, due - amtVal);
     var status = remainingDue <= 0 ? "Paid" : "Partial";
     
-    colSheet.getRange(i + 1, 10).setValue(paid);
-    colSheet.getRange(i + 1, 11).setValue(remainingDue);
-    colSheet.getRange(i + 1, 12).setValue(status);
+    colSheet.getRange(i + 1, 11).setValue(paid);
+    colSheet.getRange(i + 1, 12).setValue(remainingDue);
+    colSheet.getRange(i + 1, 13).setValue(status);
     
     // Update farmer current_due and payment_status
     var farmSheet = ss.getSheetByName("Farmers");
@@ -1659,6 +1833,7 @@ function importBackupData(data) {
           if (c.entry_id && existingIds.indexOf(c.entry_id) === -1) {
             var rowData = [
               c.entry_id,
+              c.farmer_name || getFarmerNameById(ssCol, c.farmer_id),
               c.farmer_id || "",
               c.date || "",
               c.milk_type || "Cow",
