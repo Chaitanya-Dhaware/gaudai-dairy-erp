@@ -73,8 +73,6 @@ function AuthLoadingScreen() {
 function App() {
   const { user, loadingAuth, activeWorkspace } = useAppStore();
 
-  console.log('App component rendering. loadingAuth:', loadingAuth, 'user:', user);
-
   // While Firebase is still checking auth state, show a loading screen
   // This prevents the flash of the Login page on every page reload
   if (loadingAuth) {
@@ -82,7 +80,6 @@ function App() {
   }
 
   if (!user) {
-    console.log('No user authenticated. Rendering Login page.');
     return (
       <>
         <Login />
@@ -91,7 +88,6 @@ function App() {
     );
   }
 
-  console.log('User is authenticated. Rendering App Layout and GaudaiChat.');
   return (
     <>
       <Layout>

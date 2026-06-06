@@ -14,10 +14,6 @@ import './GaudaiChat.css';
 export default function GaudaiChat() {
   const { isOpen, toggleChat, hasUnread } = useChatStore();
 
-  useEffect(() => {
-    console.log('GaudaiChat component mounted successfully. isOpen:', isOpen);
-  }, [isOpen]);
-
   return (
     <>
       {/* Chat Panel */}
@@ -29,7 +25,6 @@ export default function GaudaiChat() {
         onClick={toggleChat}
         aria-label={isOpen ? 'Close AI Assistant' : 'Open AI Assistant'}
         id="gaudai-ai-fab"
-        style={{ border: '2px solid red' }} // temporary border to debug visibility
       >
         {isOpen ? (
           <X size={28} strokeWidth={2.5} />
