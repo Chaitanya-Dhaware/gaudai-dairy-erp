@@ -28,9 +28,10 @@ export function ExpenseWorkspace() {
   };
 
   const formatDate = (dateStr) => {
+    const localDate = new Date(String(dateStr).replace(/-/g, '/'));
     return new Intl.DateTimeFormat(isMarathi ? 'mr-IN' : 'en-IN', {
       day: 'numeric', month: 'short', year: 'numeric'
-    }).format(new Date(dateStr));
+    }).format(localDate);
   };
 
   return (

@@ -1,44 +1,141 @@
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-1.5-flash'; // Stable and highly responsive
+const GEMINI_MODEL = 'gemini-2.0-flash'; // Multimodal support for OCR + chat
+const GEMINI_MODEL_LEGACY = 'gemini-1.5-flash'; // Fallback for simple tasks or quota issues
 
-export async function generateContent(prompt) {
+/**
+ * Sends a POST request to the Gemini API for a given model.
+ */
+async function postToGemini(model, body) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+
+/**
+ * Core wrapper that executes a Gemini API call using gemini-2.0-flash first.
+ * If a quota (429), access (403), or invalid model error (400) occurs,
+ * it automatically falls back to gemini-1.5-flash.
+ */
+async function callGeminiWithFallback(body) {
   if (!GEMINI_API_KEY) {
-    console.warn('Gemini API key is not set.');
-    throw new Error('API key missing');
+    throw new Error('Gemini API key not configured in environment variables');
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            {
-              text: prompt
-            }
-          ]
-        }
-      ]
-    })
-  });
+  console.log(`Calling Gemini API using model: ${GEMINI_MODEL}...`);
+  let response = await postToGemini(GEMINI_MODEL, body);
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API Error: ${response.status} - ${errorText}`);
+    const isQuotaOrAccessError = response.status === 429 || response.status === 400 || response.status === 403;
+    if (isQuotaOrAccessError) {
+      const errorText = await response.clone().text();
+      console.warn(`Gemini call with ${GEMINI_MODEL} failed (Status: ${response.status}). Attempting fallback to ${GEMINI_MODEL_LEGACY}... Error detail:`, errorText);
+      
+      // Fallback to legacy 1.5-flash
+      response = await postToGemini(GEMINI_MODEL_LEGACY, body);
+      
+      if (!response.ok) {
+        const errorTextLeg = await response.text();
+        throw new Error(`Gemini Fallback Error (${GEMINI_MODEL_LEGACY}): ${response.status} - ${errorTextLeg}`);
+      }
+      
+      console.log(`Successfully completed request using fallback model: ${GEMINI_MODEL_LEGACY}`);
+    } else {
+      const errorText = await response.text();
+      throw new Error(`Gemini API Error: ${response.status} - ${errorText}`);
+    }
   }
 
   const data = await response.json();
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) {
-    throw new Error('Empty response from Gemini');
+    throw new Error('Empty response received from Gemini API');
   }
 
   return text.trim();
+}
+
+/**
+ * Basic text-only content generation (existing API — unchanged behavior).
+ */
+export async function generateContent(prompt) {
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: prompt }
+        ]
+      }
+    ]
+  };
+
+  return callGeminiWithFallback(body);
+}
+
+/**
+ * Chat-style conversation with system prompt.
+ * Used by the Gaudai AI Assistant for contextual conversations.
+ * 
+ * @param {string} systemPrompt - System instruction for the AI
+ * @param {Array<{role: string, text: string}>} messages - Conversation history
+ * @returns {Promise<string>} AI response text
+ */
+export async function chatWithGemini(systemPrompt, messages) {
+  // Build contents array from conversation history
+  const contents = messages.map(msg => ({
+    role: msg.role === 'user' ? 'user' : 'model',
+    parts: [{ text: msg.text }]
+  }));
+
+  const body = {
+    system_instruction: {
+      parts: [{ text: systemPrompt }]
+    },
+    contents,
+    generationConfig: {
+      temperature: 0.7,
+      topP: 0.9,
+      maxOutputTokens: 4096
+    }
+  };
+
+  return callGeminiWithFallback(body);
+}
+
+/**
+ * Multimodal image + text processing.
+ * Used for OCR of handwritten documents.
+ * 
+ * @param {string} prompt - Text instruction for processing the image
+ * @param {string} imageBase64 - Base64-encoded image data (no data: prefix)
+ * @param {string} mimeType - Image MIME type (image/jpeg, image/png, etc.)
+ * @returns {Promise<string>} AI response with extracted data
+ */
+export async function processImageWithGemini(prompt, imageBase64, mimeType) {
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: imageBase64
+            }
+          }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.2,  // Low temperature for accurate extraction
+      topP: 0.8,
+      maxOutputTokens: 8192  // Large output for detailed OCR results
+    }
+  };
+
+  return callGeminiWithFallback(body);
 }
 
 /**

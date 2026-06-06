@@ -29,9 +29,13 @@ export function CollectionWorkspace() {
   };
 
   const formatDate = (dateStr) => {
+    // Replace dashes with slashes so JS parses as local midnight (not UTC midnight).
+    // Without this, "2026-05-29" is treated as UTC 00:00 which in IST (+5:30)
+    // displays as "28 May" — one day behind.
+    const localDate = new Date(String(dateStr).replace(/-/g, '/'));
     return new Intl.DateTimeFormat(isMarathi ? 'mr-IN' : 'en-IN', {
       day: 'numeric', month: 'short', year: 'numeric'
-    }).format(new Date(dateStr));
+    }).format(localDate);
   };
 
   return (

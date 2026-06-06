@@ -1,0 +1,870 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Gaudai AI Chat Widget — Premium Glassmorphism Design
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── FAB (Floating Action Button) ──────────────────────────────── */
+
+.gaudai-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0F6E56 0%, #148C6E 50%, #0A4D3C 100%);
+  box-shadow:
+    0 4px 20px rgba(15, 110, 86, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: visible;
+}
+
+.gaudai-fab:hover {
+  transform: scale(1.08);
+  box-shadow:
+    0 6px 28px rgba(15, 110, 86, 0.45),
+    0 3px 12px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.gaudai-fab:active {
+  transform: scale(0.95);
+}
+
+.gaudai-fab svg {
+  width: 28px;
+  height: 28px;
+  color: white;
+  transition: transform 0.3s ease;
+}
+
+.gaudai-fab.is-open svg {
+  transform: rotate(90deg);
+}
+
+/* Unread notification badge */
+.gaudai-fab-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 16px;
+  height: 16px;
+  background: #EF4444;
+  border-radius: 50%;
+  border: 2.5px solid white;
+  animation: gaudai-pulse 2s ease-in-out infinite;
+}
+
+/* Pulse ring animation */
+.gaudai-fab::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid rgba(15, 110, 86, 0.2);
+  animation: gaudai-ring-pulse 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.gaudai-fab.is-open::before {
+  display: none;
+}
+
+@keyframes gaudai-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.15); }
+}
+
+@keyframes gaudai-ring-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.15); opacity: 0; }
+}
+
+/* ─── Chat Panel Container ──────────────────────────────────────── */
+
+.gaudai-chat-panel {
+  position: fixed;
+  bottom: 96px;
+  right: 24px;
+  width: 400px;
+  height: 560px;
+  max-height: calc(100vh - 120px);
+  border-radius: 20px;
+  z-index: 9998;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  /* Glassmorphism */
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(15, 110, 86, 0.05);
+
+  /* Animation */
+  transform-origin: bottom right;
+  animation: gaudai-panel-enter 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.gaudai-chat-panel.closing {
+  animation: gaudai-panel-exit 0.25s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@keyframes gaudai-panel-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.85) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes gaudai-panel-exit {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.85) translateY(20px);
+  }
+}
+
+/* ─── Chat Header ──────────────────────────────────────────────── */
+
+.gaudai-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, #0F6E56 0%, #148C6E 100%);
+  color: white;
+  flex-shrink: 0;
+}
+
+.gaudai-chat-header-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gaudai-chat-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.gaudai-chat-header-text h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  line-height: 1.2;
+}
+
+.gaudai-chat-header-text p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  opacity: 0.85;
+  font-weight: 400;
+}
+
+.gaudai-chat-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.gaudai-chat-header-actions button {
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: white;
+  transition: background 0.2s;
+}
+
+.gaudai-chat-header-actions button:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ─── Message List ─────────────────────────────────────────────── */
+
+.gaudai-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-behavior: smooth;
+}
+
+.gaudai-messages::-webkit-scrollbar {
+  width: 4px;
+}
+
+.gaudai-messages::-webkit-scrollbar-thumb {
+  background: rgba(15, 110, 86, 0.15);
+  border-radius: 4px;
+}
+
+/* ─── Message Bubbles ──────────────────────────────────────────── */
+
+.gaudai-msg {
+  display: flex;
+  gap: 8px;
+  max-width: 88%;
+  animation: gaudai-msg-enter 0.3s ease-out;
+}
+
+.gaudai-msg.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.gaudai-msg.assistant {
+  align-self: flex-start;
+}
+
+.gaudai-msg-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.gaudai-msg.assistant .gaudai-msg-avatar {
+  background: linear-gradient(135deg, #0F6E56, #148C6E);
+  color: white;
+}
+
+.gaudai-msg.user .gaudai-msg-avatar {
+  background: #E8F5F1;
+  color: #0F6E56;
+}
+
+.gaudai-msg-bubble {
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.gaudai-msg.user .gaudai-msg-bubble {
+  background: linear-gradient(135deg, #0F6E56, #148C6E);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.gaudai-msg.assistant .gaudai-msg-bubble {
+  background: #F3F4F6;
+  color: #1A1A1A;
+  border-bottom-left-radius: 4px;
+}
+
+.gaudai-msg-bubble strong {
+  font-weight: 600;
+}
+
+.gaudai-msg-time {
+  font-size: 10px;
+  color: #9CA3AF;
+  margin-top: 4px;
+  text-align: right;
+}
+
+.gaudai-msg.assistant .gaudai-msg-time {
+  text-align: left;
+}
+
+/* Image in message */
+.gaudai-msg-image {
+  max-width: 200px;
+  max-height: 160px;
+  border-radius: 12px;
+  object-fit: cover;
+  margin-bottom: 6px;
+}
+
+@keyframes gaudai-msg-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Typing Indicator ─────────────────────────────────────────── */
+
+.gaudai-typing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 4px 0;
+}
+
+.gaudai-typing-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #0F6E56, #148C6E);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: white;
+  flex-shrink: 0;
+}
+
+.gaudai-typing-dots {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px;
+  background: #F3F4F6;
+  border-radius: 16px;
+  border-bottom-left-radius: 4px;
+}
+
+.gaudai-typing-dots span {
+  width: 7px;
+  height: 7px;
+  background: #9CA3AF;
+  border-radius: 50%;
+  animation: gaudai-dot-bounce 1.4s ease-in-out infinite;
+}
+
+.gaudai-typing-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.gaudai-typing-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes gaudai-dot-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ─── Action Cards (Data Preview / Confirmation) ───────────────── */
+
+.gaudai-action-card {
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 14px;
+  padding: 14px;
+  margin-top: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.gaudai-action-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.gaudai-action-card-header .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.gaudai-action-card-header .badge.collection {
+  background: #ECFDF5;
+  color: #065F46;
+}
+
+.gaudai-action-card-header .badge.sales {
+  background: #EFF6FF;
+  color: #1E40AF;
+}
+
+.gaudai-action-card-header .badge.expense {
+  background: #FEF3C7;
+  color: #854D0E;
+}
+
+.gaudai-action-card-header .badge.payment {
+  background: #F0FDF4;
+  color: #166534;
+}
+
+.gaudai-action-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.gaudai-action-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #6B7280;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 6px;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.gaudai-action-table td {
+  padding: 6px;
+  color: #374151;
+  border-bottom: 1px solid #F9FAFB;
+}
+
+.gaudai-action-table tr.invalid {
+  opacity: 0.5;
+}
+
+.gaudai-action-table .warning-cell {
+  color: #DC2626;
+  font-size: 10px;
+}
+
+.gaudai-action-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.gaudai-btn {
+  flex: 1;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: inherit;
+}
+
+.gaudai-btn.confirm {
+  background: linear-gradient(135deg, #0F6E56, #148C6E);
+  color: white;
+  box-shadow: 0 2px 8px rgba(15, 110, 86, 0.25);
+}
+
+.gaudai-btn.confirm:hover {
+  box-shadow: 0 4px 16px rgba(15, 110, 86, 0.35);
+  transform: translateY(-1px);
+}
+
+.gaudai-btn.cancel {
+  background: #F3F4F6;
+  color: #6B7280;
+}
+
+.gaudai-btn.cancel:hover {
+  background: #E5E7EB;
+}
+
+.gaudai-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* ─── Report Card ──────────────────────────────────────────────── */
+
+.gaudai-report {
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 14px;
+  padding: 14px;
+  margin-top: 8px;
+  overflow-x: auto;
+}
+
+.gaudai-report table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.gaudai-report th {
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  font-size: 11px;
+  padding: 6px 8px;
+  background: #F9FAFB;
+  border-bottom: 2px solid #E5E7EB;
+}
+
+.gaudai-report td {
+  padding: 6px 8px;
+  color: #4B5563;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.gaudai-report .total-row {
+  font-weight: 700;
+  color: #0F6E56;
+  background: #F0FDF9;
+}
+
+/* ─── Chat Input ───────────────────────────────────────────────── */
+
+.gaudai-input-area {
+  padding: 12px 14px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.8);
+  flex-shrink: 0;
+}
+
+.gaudai-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: #F3F4F6;
+  border-radius: 14px;
+  padding: 6px 8px;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+}
+
+.gaudai-input-row:focus-within {
+  border-color: rgba(15, 110, 86, 0.3);
+  background: white;
+  box-shadow: 0 0 0 4px rgba(15, 110, 86, 0.05);
+}
+
+.gaudai-input-row textarea {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13.5px;
+  line-height: 1.5;
+  resize: none;
+  min-height: 22px;
+  max-height: 100px;
+  font-family: inherit;
+  color: #1A1A1A;
+  padding: 4px 2px;
+}
+
+.gaudai-input-row textarea::placeholder {
+  color: #9CA3AF;
+}
+
+.gaudai-input-btn {
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  background: transparent;
+  color: #6B7280;
+}
+
+.gaudai-input-btn:hover {
+  background: rgba(15, 110, 86, 0.08);
+  color: #0F6E56;
+}
+
+.gaudai-input-btn.send {
+  background: linear-gradient(135deg, #0F6E56, #148C6E);
+  color: white;
+  box-shadow: 0 2px 6px rgba(15, 110, 86, 0.25);
+}
+
+.gaudai-input-btn.send:hover {
+  box-shadow: 0 3px 12px rgba(15, 110, 86, 0.35);
+  transform: scale(1.05);
+}
+
+.gaudai-input-btn.send:disabled {
+  background: #D1D5DB;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.gaudai-input-btn.recording {
+  background: #EF4444;
+  color: white;
+  animation: gaudai-pulse-red 1.5s ease-in-out infinite;
+}
+
+@keyframes gaudai-pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+/* File preview strip */
+.gaudai-file-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  background: #F0FDF9;
+  border-radius: 10px;
+  border: 1px solid #D1FAE5;
+}
+
+.gaudai-file-preview img {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.gaudai-file-preview .file-info {
+  flex: 1;
+  font-size: 12px;
+  color: #374151;
+}
+
+.gaudai-file-preview .file-info .name {
+  font-weight: 500;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gaudai-file-preview .file-info .size {
+  color: #9CA3AF;
+  font-size: 10px;
+}
+
+.gaudai-file-preview .remove-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #9CA3AF;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gaudai-file-preview .remove-btn:hover {
+  background: #FEE2E2;
+  color: #EF4444;
+}
+
+/* ─── Suggested Actions ────────────────────────────────────────── */
+
+.gaudai-suggestions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  flex: 1;
+}
+
+.gaudai-suggestions-welcome {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.gaudai-suggestions-welcome .icon {
+  font-size: 40px;
+  margin-bottom: 8px;
+}
+
+.gaudai-suggestions-welcome h4 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0F6E56;
+}
+
+.gaudai-suggestions-welcome p {
+  margin: 0;
+  font-size: 12px;
+  color: #6B7280;
+  max-width: 260px;
+}
+
+.gaudai-suggestions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.gaudai-suggestion-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #E5E7EB;
+  background: white;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+  transition: all 0.2s;
+  text-align: left;
+  font-family: inherit;
+}
+
+.gaudai-suggestion-chip:hover {
+  border-color: #0F6E56;
+  background: #F0FDF9;
+  color: #0F6E56;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(15, 110, 86, 0.1);
+}
+
+.gaudai-suggestion-chip .chip-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* ─── Success/Error Message Variants ───────────────────────────── */
+
+.gaudai-msg-bubble.success {
+  background: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  color: #166534;
+}
+
+.gaudai-msg-bubble.error {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #991B1B;
+}
+
+/* ─── Markdown-like rendering in messages ──────────────────────── */
+
+.gaudai-msg-bubble p {
+  margin: 0 0 6px;
+}
+
+.gaudai-msg-bubble p:last-child {
+  margin-bottom: 0;
+}
+
+.gaudai-msg-bubble table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 11px;
+}
+
+.gaudai-msg-bubble table th {
+  text-align: left;
+  font-weight: 600;
+  padding: 4px 6px;
+  border-bottom: 2px solid #D1D5DB;
+  font-size: 10px;
+  color: #6B7280;
+}
+
+.gaudai-msg-bubble table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+/* ─── Mobile Responsive ────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .gaudai-fab {
+    bottom: 80px; /* Above mobile bottom bar */
+    right: 16px;
+    width: 54px;
+    height: 54px;
+  }
+
+  .gaudai-fab svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .gaudai-chat-panel {
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+    animation: gaudai-panel-slide-up 0.3s ease-out forwards;
+  }
+
+  .gaudai-chat-panel.closing {
+    animation: gaudai-panel-slide-down 0.25s ease-in forwards;
+  }
+
+  @keyframes gaudai-panel-slide-up {
+    0% { transform: translateY(100%); opacity: 0.8; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes gaudai-panel-slide-down {
+    0% { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(100%); opacity: 0; }
+  }
+}
+
+/* ─── Bottom bar spacing on mobile ─────────────────────────────── */
+@media (max-width: 1024px) {
+  .gaudai-fab {
+    bottom: 80px;
+  }
+}

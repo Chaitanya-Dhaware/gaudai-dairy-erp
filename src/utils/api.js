@@ -43,7 +43,7 @@ const delay = (ms) => {
 };
 
 // Mock Database Initializer
-const initMockDB = () => {
+export const initMockDB = () => {
   if (!localStorage.getItem('GAUDAI_DB_INITIALIZED')) {
     // Seed default farmers
     const farmers = [

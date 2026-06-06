@@ -1,8 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
-import { Database, MessageSquare, ShieldCheck, Download, Trash2 } from 'lucide-react';
+import { callAPI } from '../utils/api';
+import { Database, MessageSquare, ShieldCheck, Download, Trash2, Archive, RefreshCw, CalendarClock, ExternalLink, Search, CheckCircle, AlertTriangle, FileSpreadsheet, Play, FolderOpen } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+
+const YESTERDAY_DATE_STR = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split('T')[0];
+})();
 
 export function Settings() {
   const { i18n } = useTranslation();
@@ -16,10 +23,97 @@ export function Settings() {
     sales,
     expenses,
     clearAllTransactions,
-    loading
+    loading,
+    dailySpreadsheets,
+    dailySheetsLoaded,
+    loadDailySpreadsheets: loadDailySheetsAction,
+    resyncDailySpreadsheet: resyncAction,
+    verifyDailySpreadsheet: verifyAction,
+    migrateToDailySpreadsheets: migrateAction,
+    prepareDailySpreadsheet: prepareAction,
+    getDailySpreadsheetInfo: getInfoAction
   } = useAppStore();
 
-  const [activeSubTab, setActiveSubTab] = useState('database'); // database, whatsapp, staff, backup
+  const [activeSubTab, setActiveSubTab] = useState('database'); // database, whatsapp, staff, backup, archive
+
+  // Archive state
+  const [archiveDate, setArchiveDate] = useState('');
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archivedDates, setArchivedDates] = useState([]);
+  const [archiveStatusLoaded, setArchiveStatusLoaded] = useState(false);
+
+  // Daily Spreadsheet admin state
+  const [dsSearchDate, setDsSearchDate] = useState('');
+  const [dsSearchResult, setDsSearchResult] = useState(null);
+  const [dsSearching, setDsSearching] = useState(false);
+  const [dsTodayInfo, setDsTodayInfo] = useState(null);
+  const [dsLoading, setDsLoading] = useState(false);
+  const [dsMigrating, setDsMigrating] = useState(false);
+  const [dsMigrationReport, setDsMigrationReport] = useState(null);
+  const [dsVerifyResult, setDsVerifyResult] = useState(null);
+
+  const loadArchiveStatus = async () => {
+    try {
+      const res = await callAPI('getArchiveStatus');
+      if (res.success) setArchivedDates(res.data.archivedDates || []);
+      setArchiveStatusLoaded(true);
+    } catch(e) { console.error(e); }
+  };
+
+  const handleArchiveYesterday = async () => {
+    setArchiveLoading(true);
+    try {
+      const res = await callAPI('archivePreviousDayData');
+      if (res.success) {
+        toast.success(res.message);
+        await loadArchiveStatus();
+      } else {
+        toast.error(res.message || 'Archive failed');
+      }
+    } catch(e) { toast.error('Archive error: ' + e.message); }
+    finally { setArchiveLoading(false); }
+  };
+
+  const handleArchiveSpecificDate = async () => {
+    if (!archiveDate) { toast.error('Please pick a date first'); return; }
+    setArchiveLoading(true);
+    try {
+      const res = await callAPI('archiveSpecificDate', { date: archiveDate, force: true });
+      if (res.success) {
+        toast.success(res.message);
+        await loadArchiveStatus();
+      } else {
+        toast.error(res.message || 'Archive failed');
+      }
+    } catch(e) { toast.error('Archive error: ' + e.message); }
+    finally { setArchiveLoading(false); }
+  };
+
+  const handleSetupTrigger = async () => {
+    setArchiveLoading(true);
+    try {
+      const res = await callAPI('setupDailyArchiveTrigger');
+      if (res.success) toast.success(res.message);
+      else toast.error(res.message || 'Trigger setup failed');
+    } catch(e) { toast.error(e.message); }
+    finally { setArchiveLoading(false); }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'archive' && !archiveStatusLoaded) {
+      Promise.resolve().then(() => {
+        loadArchiveStatus();
+      });
+    }
+  }, [activeSubTab, archiveStatusLoaded]);
+
+  const loadTodayInfo = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res = await getInfoAction(today);
+      if (res.success) setDsTodayInfo(res.data);
+    } catch(e) { console.error('loadTodayInfo:', e); }
+  };
 
   // State bindings for form
   const [baseRate, setBaseRate] = useState(8.5);
@@ -36,15 +130,17 @@ export function Settings() {
   // Sync settings when they are fetched from the store
   useEffect(() => {
     if (settings) {
-      setBaseRate(settings.baseRate || 8.5);
-      setBusinessName(settings.businessName || 'Gaudai AI Dairy');
-      setAdminMobile(settings.adminMobile || '');
-      setWhatsappToken(settings.whatsappToken || '');
-      setWhatsappPhoneId(settings.whatsappPhoneId || '');
-      setSheetsIdCollection(settings.sheetsIdCollection || '');
-      setSheetsIdCustomer(settings.sheetsIdCustomer || '');
-      setSheetsIdExpense(settings.sheetsIdExpense || '');
-      setSheetsIdMaster(settings.sheetsIdMaster || '');
+      Promise.resolve().then(() => {
+        setBaseRate(settings.baseRate || 8.5);
+        setBusinessName(settings.businessName || 'Gaudai AI Dairy');
+        setAdminMobile(settings.adminMobile || '');
+        setWhatsappToken(settings.whatsappToken || '');
+        setWhatsappPhoneId(settings.whatsappPhoneId || '');
+        setSheetsIdCollection(settings.sheetsIdCollection || '');
+        setSheetsIdCustomer(settings.sheetsIdCustomer || '');
+        setSheetsIdExpense(settings.sheetsIdExpense || '');
+        setSheetsIdMaster(settings.sheetsIdMaster || '');
+      });
     }
   }, [settings]);
 
@@ -192,6 +288,16 @@ export function Settings() {
         >
           <Download className="w-4 h-4" />
           <span>CSV Export</span>
+        </button>
+
+        <button
+          onClick={() => { setActiveSubTab('archive'); if (!archiveStatusLoaded) loadArchiveStatus(); if (!dailySheetsLoaded) { setDsLoading(true); loadDailySheetsAction().finally(() => setDsLoading(false)); } loadTodayInfo(); }}
+          className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+            activeSubTab === 'archive' ? 'bg-primary/10 text-primary border-l-4 border-primary pl-3' : 'text-textSecondary hover:bg-black/[0.02]'
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          <span>Daily Sheets</span>
         </button>
 
         <button
@@ -548,6 +654,43 @@ export function Settings() {
           </div>
         )}
 
+        {activeSubTab === 'archive' && (
+          <DailySheetsPanel
+            isMarathi={isMarathi}
+            dsLoading={dsLoading}
+            setDsLoading={setDsLoading}
+            dsTodayInfo={dsTodayInfo}
+            setDsTodayInfo={setDsTodayInfo}
+            dsSearchDate={dsSearchDate}
+            setDsSearchDate={setDsSearchDate}
+            dsSearchResult={dsSearchResult}
+            setDsSearchResult={setDsSearchResult}
+            dsSearching={dsSearching}
+            setDsSearching={setDsSearching}
+            dsVerifyResult={dsVerifyResult}
+            setDsVerifyResult={setDsVerifyResult}
+            dsMigrating={dsMigrating}
+            setDsMigrating={setDsMigrating}
+            dsMigrationReport={dsMigrationReport}
+            setDsMigrationReport={setDsMigrationReport}
+            dailySpreadsheets={dailySpreadsheets}
+            loadDailySheetsAction={loadDailySheetsAction}
+            getInfoAction={getInfoAction}
+            resyncAction={resyncAction}
+            verifyAction={verifyAction}
+            migrateAction={migrateAction}
+            prepareAction={prepareAction}
+            archiveLoading={archiveLoading}
+            handleArchiveYesterday={handleArchiveYesterday}
+            handleArchiveSpecificDate={handleArchiveSpecificDate}
+            handleSetupTrigger={handleSetupTrigger}
+            archiveDate={archiveDate}
+            setArchiveDate={setArchiveDate}
+            archivedDates={archivedDates}
+            loadArchiveStatus={loadArchiveStatus}
+          />
+        )}
+
         {activeSubTab === 'danger' && (
           <div className="bg-white rounded-2xl p-6 sm:p-8 border border-danger/20 shadow-subtle space-y-6">
             <h3 className="text-lg font-bold font-head text-danger border-b border-black/[0.04] pb-4 flex items-center space-x-2">
@@ -594,4 +737,491 @@ export function Settings() {
     </div>
   );
 }
+
+/** Daily Spreadsheets Admin Panel Component */
+function DailySheetsPanel({
+  isMarathi, dsLoading, setDsLoading, dsTodayInfo, setDsTodayInfo,
+  dsSearchDate, setDsSearchDate, dsSearchResult, setDsSearchResult,
+  dsSearching, setDsSearching, dsVerifyResult, setDsVerifyResult,
+  dsMigrating, setDsMigrating, dsMigrationReport, setDsMigrationReport,
+  dailySpreadsheets, loadDailySheetsAction, getInfoAction,
+  resyncAction, verifyAction, migrateAction, prepareAction,
+  archiveLoading, handleArchiveYesterday, handleArchiveSpecificDate,
+  handleSetupTrigger, archiveDate, setArchiveDate, archivedDates, loadArchiveStatus
+}) {
+
+  const handleSearchDate = async () => {
+    if (!dsSearchDate) return;
+    setDsSearching(true);
+    setDsSearchResult(null);
+    setDsVerifyResult(null);
+    try {
+      const res = await getInfoAction(dsSearchDate);
+      setDsSearchResult(res.success ? res : { data: null });
+    } catch (err) {
+      console.error(err);
+      setDsSearchResult({ data: null });
+    } finally {
+      setDsSearching(false);
+    }
+  };
+
+  const handleVerifyDate = async (dateStr) => {
+    try {
+      const res = await verifyAction(dateStr);
+      if (res.success) setDsVerifyResult(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleResync = async (dateStr) => {
+    setDsLoading(true);
+    try {
+      await resyncAction(dateStr);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDsLoading(false);
+    }
+  };
+
+  const handleMigrate = async () => {
+    if (!window.confirm(isMarathi
+      ? 'हे ऐतिहासिक डेटाचे दैनिक स्प्रेडशीट्समध्ये स्थलांतर करेल. सुरू ठेवायचे?'
+      : 'This will migrate historical data to daily spreadsheets. Continue?'
+    )) return;
+    setDsMigrating(true);
+    setDsMigrationReport(null);
+    try {
+      const res = await migrateAction(20);
+      if (res.success) setDsMigrationReport(res.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDsMigrating(false);
+    }
+  };
+
+  const handlePrepareToday = async () => {
+    setDsLoading(true);
+    try {
+      const res = await prepareAction();
+      if (res.success && res.data) setDsTodayInfo(res.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDsLoading(false);
+    }
+  };
+
+  const today = new Date().toISOString().split('T')[0];
+
+  return (
+    <div className="space-y-6">
+
+      {/* Header Banner */}
+      <div className="bg-gradient-to-r from-primary to-primary-light text-white rounded-2xl p-6 border border-primary/20 space-y-2 relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-32 h-32 rounded-full bg-white/5 -translate-y-8 translate-x-8" />
+        <div className="absolute right-16 bottom-0 w-20 h-20 rounded-full bg-white/[0.03]" />
+        <div className="flex items-center space-x-2">
+          <FileSpreadsheet className="w-5 h-5" />
+          <h3 className="text-base font-bold font-head">
+            {isMarathi ? 'दैनिक संकलन स्प्रेडशीट्स' : 'Daily Collection Spreadsheets'}
+          </h3>
+        </div>
+        <p className="text-xs text-white/80 leading-relaxed max-w-xl">
+          {isMarathi
+            ? 'प्रत्येक दिवसाचे दूध संकलन एका स्वतंत्र Google Spreadsheet मध्ये स्वयंचलितपणे जतन होते. नाव: "Gaudai_Collection_YYYY-MM-DD". फोल्डर: Gaudai Dairy ERP Collections / Year / Month /'
+            : 'Each day\'s milk collections are automatically saved to a separate Google Spreadsheet named "Gaudai_Collection_YYYY-MM-DD", organized in Google Drive under Gaudai Dairy ERP Collections / Year / Month /.'}
+        </p>
+      </div>
+
+      {/* Today's Spreadsheet Card */}
+      <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-subtle">
+        <div className="flex justify-between items-start">
+          <div>
+            <h4 className="text-xs font-bold text-textSecondary uppercase tracking-widest mb-3">
+              {isMarathi ? 'आजची स्प्रेडशीट' : "Today's Spreadsheet"}
+            </h4>
+            {dsTodayInfo ? (
+              <div className="space-y-2">
+                <p className="text-sm font-bold font-head text-textPrimary">
+                  {dsTodayInfo.spreadsheetName || `Gaudai_Collection_${today}`}
+                </p>
+                <div className="flex items-center space-x-4 text-xs text-textSecondary">
+                  <span className="font-mono">{today}</span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-primary/5 text-primary border border-primary/10">
+                    {dsTodayInfo.recordCount || 0} records
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-accent/5 text-accent border border-accent/10">
+                    {dsTodayInfo.month || ''}
+                  </span>
+                </div>
+                {dsTodayInfo.url && (
+                  <a
+                    href={dsTodayInfo.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center space-x-1.5 text-xs text-primary font-bold hover:underline mt-1"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>{isMarathi ? 'Google Sheets मध्ये उघडा' : 'Open in Google Sheets'}</span>
+                  </a>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-textSecondary">
+                {isMarathi ? 'आजची स्प्रेडशीट अद्याप तयार नाही.' : 'Today\'s spreadsheet not yet created.'}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={handlePrepareToday}
+            disabled={dsLoading}
+            className="flex items-center space-x-1.5 px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary-light transition-all cursor-pointer disabled:opacity-50"
+          >
+            <Play className={`w-3.5 h-3.5 ${dsLoading ? 'animate-spin' : ''}`} />
+            <span>{dsTodayInfo ? (isMarathi ? 'रीफ्रेश' : 'Refresh') : (isMarathi ? 'तयार करा' : 'Create Now')}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Date Search */}
+      <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-subtle space-y-4">
+        <h4 className="text-xs font-bold text-textSecondary uppercase tracking-widest">
+          {isMarathi ? 'तारखेनुसार शोधा' : 'Search by Date'}
+        </h4>
+        <div className="flex gap-3 items-end">
+          <div>
+            <label className="block text-[10px] font-bold text-textSecondary uppercase mb-1">
+              {isMarathi ? 'तारीख निवडा' : 'Select Date'}
+            </label>
+            <input
+              type="date"
+              value={dsSearchDate}
+              max={today}
+              onChange={(e) => { setDsSearchDate(e.target.value); setDsSearchResult(null); setDsVerifyResult(null); }}
+              className="px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background font-mono"
+            />
+          </div>
+          <button
+            onClick={handleSearchDate}
+            disabled={dsSearching || !dsSearchDate}
+            className="flex items-center space-x-1.5 px-4 py-2 bg-accent text-white text-xs font-bold rounded-xl hover:bg-accent/90 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <Search className={`w-3.5 h-3.5 ${dsSearching ? 'animate-spin' : ''}`} />
+            <span>{isMarathi ? 'शोधा' : 'Search'}</span>
+          </button>
+        </div>
+
+        {/* Search Result */}
+        {dsSearchResult && (
+          <div className="mt-4 p-4 bg-background rounded-xl border border-black/[0.04]">
+            {dsSearchResult.data ? (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <p className="text-sm font-bold text-textPrimary">{dsSearchResult.data.spreadsheetName}</p>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => handleVerifyDate(dsSearchDate)}
+                      className="flex items-center space-x-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-accent/10 text-accent hover:bg-accent/20 transition-all cursor-pointer"
+                    >
+                      <CheckCircle className="w-3 h-3" />
+                      <span>Verify</span>
+                    </button>
+                    <button
+                      onClick={() => handleResync(dsSearchDate)}
+                      className="flex items-center space-x-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-all cursor-pointer"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Re-sync</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div><span className="text-textSecondary block text-[10px]">Records</span><span className="font-bold font-mono">{dsSearchResult.data.recordCount}</span></div>
+                  <div><span className="text-textSecondary block text-[10px]">Status</span><span className="font-bold">{dsSearchResult.data.status}</span></div>
+                  <div><span className="text-textSecondary block text-[10px]">Month</span><span className="font-bold">{dsSearchResult.data.month}</span></div>
+                  <div><span className="text-textSecondary block text-[10px]">Last Sync</span><span className="font-bold font-mono text-[10px]">{dsSearchResult.data.lastSyncAt ? new Date(dsSearchResult.data.lastSyncAt).toLocaleString('en-IN') : '—'}</span></div>
+                </div>
+                {dsSearchResult.data.url && (
+                  <a href={dsSearchResult.data.url} target="_blank" rel="noreferrer" className="inline-flex items-center space-x-1 text-xs text-primary font-bold hover:underline">
+                    <ExternalLink className="w-3 h-3" />
+                    <span>Open Spreadsheet</span>
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2 text-xs text-textSecondary">
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                <span>{isMarathi ? `${dsSearchDate} साठी कोणतीही स्प्रेडशीट सापडली नाही.` : `No spreadsheet found for ${dsSearchDate}.`}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Verify Result */}
+        {dsVerifyResult && (
+          <div className={`mt-2 p-3 rounded-xl border text-xs ${dsVerifyResult.isConsistent ? 'bg-primary/5 border-primary/10' : 'bg-danger/5 border-danger/10'}`}>
+            <div className="flex items-center space-x-2">
+              {dsVerifyResult.isConsistent ? (
+                <CheckCircle className="w-4 h-4 text-primary" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-danger" />
+              )}
+              <span className={`font-bold ${dsVerifyResult.isConsistent ? 'text-primary' : 'text-danger'}`}>
+                {dsVerifyResult.message}
+              </span>
+            </div>
+            <div className="flex space-x-4 mt-1.5 text-textSecondary text-[10px]">
+              <span>Master: {dsVerifyResult.masterCount} records</span>
+              <span>Daily: {dsVerifyResult.dailyCount} records</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Daily Spreadsheets List */}
+      <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-subtle space-y-4">
+        <div className="flex justify-between items-center">
+          <h4 className="text-xs font-bold text-textSecondary uppercase tracking-widest">
+            {isMarathi ? 'सर्व दैनिक स्प्रेडशीट्स' : 'All Daily Spreadsheets'} ({dailySpreadsheets.length})
+          </h4>
+          <button
+            onClick={() => { setDsLoading(true); loadDailySheetsAction().finally(() => setDsLoading(false)); }}
+            className="text-[10px] text-primary font-bold flex items-center space-x-1 hover:underline cursor-pointer"
+          >
+            <RefreshCw className={`w-3 h-3 ${dsLoading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
+
+        {dailySpreadsheets.length === 0 ? (
+          <p className="text-xs text-textSecondary text-center py-6">
+            {isMarathi ? 'अद्याप कोणत्याही दैनिक स्प्रेडशीट्स तयार झालेल्या नाहीत.' : 'No daily spreadsheets created yet. Add a collection entry or run migration to get started.'}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-black/[0.08] bg-background">
+                  <th className="py-2.5 px-3 font-semibold text-textSecondary uppercase text-[10px]">Date</th>
+                  <th className="py-2.5 px-3 font-semibold text-textSecondary uppercase text-[10px]">Spreadsheet</th>
+                  <th className="py-2.5 px-3 font-semibold text-textSecondary uppercase text-[10px] text-center">Records</th>
+                  <th className="py-2.5 px-3 font-semibold text-textSecondary uppercase text-[10px]">Month</th>
+                  <th className="py-2.5 px-3 font-semibold text-textSecondary uppercase text-[10px]">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/[0.04]">
+                {dailySpreadsheets.slice(0, 30).map((sheet) => (
+                  <tr key={sheet.date} className={`hover:bg-black/[0.01] ${sheet.date === today ? 'bg-primary/[0.02]' : ''}`}>
+                    <td className="py-2.5 px-3 font-mono font-bold text-textPrimary">
+                      {sheet.date}
+                      {sheet.date === today && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-primary/10 text-primary">TODAY</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 text-textSecondary">{sheet.spreadsheetName}</td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-primary/5 text-primary border border-primary/10">
+                        {sheet.recordCount || 0}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-textSecondary">{sheet.month}</td>
+                    <td className="py-2.5 px-3">
+                      <div className="flex items-center space-x-1.5">
+                        {sheet.url && (
+                          <a
+                            href={sheet.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1.5 rounded-lg hover:bg-primary/10 text-primary transition-all"
+                            title="Open in Google Sheets"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                        <button
+                          onClick={() => handleResync(sheet.date)}
+                          className="p-1.5 rounded-lg hover:bg-accent/10 text-accent transition-all cursor-pointer"
+                          title="Re-sync from master"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {dailySpreadsheets.length > 30 && (
+              <p className="text-[10px] text-textSecondary text-center mt-2">
+                Showing 30 of {dailySpreadsheets.length} spreadsheets
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Migration Panel */}
+      <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-subtle space-y-4">
+        <h4 className="text-xs font-bold text-textSecondary uppercase tracking-widest">
+          {isMarathi ? 'ऐतिहासिक डेटा स्थलांतर' : 'Historical Data Migration'}
+        </h4>
+        <p className="text-xs text-textSecondary leading-relaxed">
+          {isMarathi
+            ? 'मास्टर Milk_Collections शीट मधील सर्व ऐतिहासिक डेटा दैनिक स्प्रेडशीट्समध्ये स्थलांतर करा. एकावेळी 20 तारखा प्रक्रिया होतात. अनेक वेळा चालवणे सुरक्षित आहे.'
+            : 'Migrate all historical data from the master Milk_Collections sheet to daily spreadsheets. Processes 20 dates per batch. Safe to run multiple times (idempotent).'}
+        </p>
+        <button
+          onClick={handleMigrate}
+          disabled={dsMigrating}
+          className="flex items-center space-x-2 px-5 py-3 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent/90 transition-all cursor-pointer disabled:opacity-50"
+        >
+          <FolderOpen className={`w-4 h-4 ${dsMigrating ? 'animate-spin' : ''}`} />
+          <span>{dsMigrating ? (isMarathi ? 'स्थलांतर सुरू...' : 'Migrating...') : (isMarathi ? 'स्थलांतर सुरू करा' : 'Start Migration Batch')}</span>
+        </button>
+
+        {/* Migration Report */}
+        {dsMigrationReport && (
+          <div className="mt-3 p-4 bg-background rounded-xl border border-black/[0.04] space-y-3">
+            <h5 className="text-[10px] font-bold text-textSecondary uppercase tracking-widest">Migration Report</h5>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="text-center p-2 bg-white rounded-lg border border-black/[0.04]">
+                <span className="block text-[10px] text-textSecondary">Total Records</span>
+                <span className="font-bold font-mono text-lg text-textPrimary">{dsMigrationReport.totalRecords}</span>
+              </div>
+              <div className="text-center p-2 bg-white rounded-lg border border-black/[0.04]">
+                <span className="block text-[10px] text-textSecondary">Total Dates</span>
+                <span className="font-bold font-mono text-lg text-textPrimary">{dsMigrationReport.totalDates}</span>
+              </div>
+              <div className="text-center p-2 bg-white rounded-lg border border-primary/10">
+                <span className="block text-[10px] text-textSecondary">Created</span>
+                <span className="font-bold font-mono text-lg text-primary">{dsMigrationReport.datesCreated}</span>
+              </div>
+              <div className="text-center p-2 bg-white rounded-lg border border-black/[0.04]">
+                <span className="block text-[10px] text-textSecondary">Skipped</span>
+                <span className="font-bold font-mono text-lg text-textSecondary">{dsMigrationReport.datesSkipped}</span>
+              </div>
+            </div>
+            {dsMigrationReport.errors && dsMigrationReport.errors.length > 0 && (
+              <div className="p-2 bg-danger/5 rounded-lg border border-danger/10 text-xs">
+                <span className="font-bold text-danger text-[10px]">Errors ({dsMigrationReport.errors.length}):</span>
+                {dsMigrationReport.errors.map((e, i) => (
+                  <p key={i} className="text-danger mt-1 text-[10px] font-mono">{e.date}: {e.error}</p>
+                ))}
+              </div>
+            )}
+            {dsMigrationReport.details && dsMigrationReport.details.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-[10px] font-bold text-primary hover:underline">Show Details</summary>
+                <div className="mt-2 max-h-48 overflow-y-auto space-y-1">
+                  {dsMigrationReport.details.map((d, i) => (
+                    <div key={i} className="flex justify-between items-center px-2 py-1 bg-white rounded border border-black/[0.03] text-[10px]">
+                      <span className="font-mono font-bold">{d.date}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                        d.action === 'migrated' ? 'bg-primary/10 text-primary' :
+                        d.action === 'skipped' ? 'bg-black/[0.04] text-textSecondary' :
+                        'bg-danger/10 text-danger'
+                      }`}>{d.action}</span>
+                      <span className="text-textSecondary">{d.records} rows</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Archive & Trigger Section (Legacy) */}
+      <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-subtle space-y-4">
+        <h4 className="text-xs font-bold text-textSecondary uppercase tracking-widest flex items-center space-x-2">
+          <Archive className="w-4 h-4" />
+          <span>{isMarathi ? 'दैनिक संग्रह आणि ट्रिगर' : 'Daily Archive & Trigger Setup'}</span>
+        </h4>
+        <p className="text-xs text-textSecondary leading-relaxed">
+          {isMarathi
+            ? 'मध्यरात्री ट्रिगर सेटअप, मागील दिवसाचा संग्रह, आणि विशिष्ट तारखेचा संग्रह.'
+            : 'Configure midnight trigger (archive + daily sheet creation), archive yesterday\'s data, or backfill a specific date.'}
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={handleSetupTrigger}
+            disabled={archiveLoading}
+            className="flex items-center space-x-1.5 px-4 py-2 border border-primary/30 text-primary text-xs font-bold rounded-xl hover:bg-primary/5 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <CalendarClock className="w-3.5 h-3.5" />
+            <span>Setup Daily Trigger</span>
+          </button>
+          <button
+            onClick={handleArchiveYesterday}
+            disabled={archiveLoading}
+            className="flex items-center space-x-1.5 px-4 py-2 bg-primary/10 text-primary text-xs font-bold rounded-xl hover:bg-primary/20 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${archiveLoading ? 'animate-spin' : ''}`} />
+            <span>{isMarathi ? 'काल संग्रहित करा' : 'Archive Yesterday'}</span>
+          </button>
+        </div>
+        <div className="flex gap-3 items-end mt-2">
+          <div>
+            <label className="block text-[10px] font-bold text-textSecondary uppercase mb-1">Backfill Date</label>
+            <input
+              type="date"
+              value={archiveDate}
+              max={YESTERDAY_DATE_STR}
+              onChange={(e) => setArchiveDate(e.target.value)}
+              className="px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background font-mono"
+            />
+          </div>
+          <button
+            onClick={handleArchiveSpecificDate}
+            disabled={archiveLoading || !archiveDate}
+            className="flex items-center space-x-1.5 px-3 py-2 bg-accent text-white text-xs font-bold rounded-xl hover:bg-accent/90 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <CalendarClock className="w-3.5 h-3.5" />
+            <span>Archive Date</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Archive History */}
+      {archivedDates.length > 0 && (
+        <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-subtle space-y-4">
+          <div className="flex justify-between items-center">
+            <h4 className="text-xs font-bold text-textSecondary uppercase tracking-widest">
+              {isMarathi ? 'संग्रह इतिहास' : 'Archive History'} ({archivedDates.length})
+            </h4>
+            <button onClick={loadArchiveStatus} className="text-[10px] text-primary font-bold flex items-center space-x-1 hover:underline cursor-pointer">
+              <RefreshCw className="w-3 h-3" />
+              <span>Refresh</span>
+            </button>
+          </div>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {[...archivedDates].reverse().map((d) => {
+              const parts = d.split('-');
+              const label = parts[2] + '-' + parts[1] + '-' + parts[0].slice(2);
+              return (
+                <div key={d} className="flex justify-between items-center text-xs px-3 py-2 bg-background rounded-lg border border-black/[0.03]">
+                  <div className="flex items-center space-x-2">
+                    <Archive className="w-3 h-3 text-primary" />
+                    <span className="font-mono font-bold text-textPrimary text-[11px]">{label}</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-primary/5 text-primary">Col</span>
+                    <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-accent/5 text-accent">Sales</span>
+                    <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-danger/5 text-danger">Exp</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
 export default Settings;

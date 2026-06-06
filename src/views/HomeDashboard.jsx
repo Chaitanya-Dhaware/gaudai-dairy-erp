@@ -6,7 +6,7 @@ import { toast } from 'react-hot-toast';
 
 export function HomeDashboard() {
   const { t, i18n } = useTranslation();
-  const { setWorkspace, todaySummary, user, settings } = useAppStore();
+  const { setWorkspace, todaySummary, user, settings, dataLoaded, collections } = useAppStore();
   const isMarathi = i18n.language === 'mr';
 
   const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
@@ -20,6 +20,11 @@ export function HomeDashboard() {
     }).format(val);
   };
 
+  const today = new Date().toLocaleDateString('en-CA');
+  const litersToday = (collections || [])
+    .filter(c => c.date === today)
+    .reduce((sum, c) => sum + (c.quantity || 0), 0);
+
   const cards = [
     {
       id: 'collection',
@@ -30,7 +35,11 @@ export function HomeDashboard() {
       icon: Droplet,
       color: 'border-primary/20 hover:border-primary',
       iconBg: 'bg-primary/10 text-primary',
-      metric: `${isMarathi ? 'आज एकूण दूध: ' : 'Liters Collected: '} 35.7 L`
+      metric: !dataLoaded ? (
+        <span className="inline-block w-20 h-4 bg-black/10 animate-pulse rounded"></span>
+      ) : (
+        `${isMarathi ? 'आज एकूण दूध: ' : 'Liters Collected: '} ${litersToday.toFixed(1)} L`
+      )
     },
     {
       id: 'customers',
@@ -41,7 +50,11 @@ export function HomeDashboard() {
       icon: Users,
       color: 'border-accent/20 hover:border-accent',
       iconBg: 'bg-accent/10 text-accent',
-      metric: `${isMarathi ? 'आजचे बिलिंग: ' : 'Billed Today: '} ${formatCurrency(todaySummary.revenueToday)}`
+      metric: !dataLoaded ? (
+        <span className="inline-block w-20 h-4 bg-black/10 animate-pulse rounded"></span>
+      ) : (
+        `${isMarathi ? 'आजचे बिलिंग: ' : 'Billed Today: '} ${formatCurrency(todaySummary.revenueToday)}`
+      )
     },
     {
       id: 'expenses',
@@ -52,7 +65,11 @@ export function HomeDashboard() {
       icon: Receipt,
       color: 'border-danger/20 hover:border-danger',
       iconBg: 'bg-danger/10 text-danger',
-      metric: `${isMarathi ? 'आजचा एकूण खर्च: ' : 'Expenses Today: '} ${formatCurrency(todaySummary.opExpensesToday + todaySummary.farmerPaymentsToday)}`
+      metric: !dataLoaded ? (
+        <span className="inline-block w-20 h-4 bg-black/10 animate-pulse rounded"></span>
+      ) : (
+        `${isMarathi ? 'आजचा एकूण खर्च: ' : 'Expenses Today: '} ${formatCurrency(todaySummary.opExpensesToday + todaySummary.farmerPaymentsToday)}`
+      )
     },
     {
       id: 'accounts',
@@ -63,7 +80,11 @@ export function HomeDashboard() {
       icon: PieChart,
       color: 'border-primary/20 hover:border-primary',
       iconBg: 'bg-primary/10 text-primary',
-      metric: `${isMarathi ? 'निव्वळ नफा: ' : 'Net Profit: '} ${formatCurrency(todaySummary.netProfit)}`
+      metric: !dataLoaded ? (
+        <span className="inline-block w-20 h-4 bg-black/10 animate-pulse rounded"></span>
+      ) : (
+        `${isMarathi ? 'निव्वळ नफा: ' : 'Net Profit: '} ${formatCurrency(todaySummary.netProfit)}`
+      )
     }
   ];
 
@@ -157,7 +178,11 @@ export function HomeDashboard() {
             <div>
               <p className="text-[10px] text-textSecondary font-semibold uppercase">{t('accounts.revenue')}</p>
               <p className="text-lg font-bold font-mono text-textPrimary mt-0.5">
-                {formatCurrency(todaySummary.revenueToday)}
+                {!dataLoaded ? (
+                  <span className="inline-block w-24 h-6 bg-black/10 animate-pulse rounded mt-1"></span>
+                ) : (
+                  formatCurrency(todaySummary.revenueToday)
+                )}
               </p>
             </div>
           </div>
@@ -169,7 +194,11 @@ export function HomeDashboard() {
             <div>
               <p className="text-[10px] text-textSecondary font-semibold uppercase">{t('accounts.expenses')}</p>
               <p className="text-lg font-bold font-mono text-textPrimary mt-0.5">
-                {formatCurrency(todaySummary.opExpensesToday + todaySummary.farmerPaymentsToday)}
+                {!dataLoaded ? (
+                  <span className="inline-block w-24 h-6 bg-black/10 animate-pulse rounded mt-1"></span>
+                ) : (
+                  formatCurrency(todaySummary.opExpensesToday + todaySummary.farmerPaymentsToday)
+                )}
               </p>
             </div>
           </div>
@@ -181,7 +210,11 @@ export function HomeDashboard() {
             <div>
               <p className="text-[10px] text-textSecondary font-semibold uppercase">{t('accounts.pendingDues')}</p>
               <p className="text-lg font-bold font-mono text-textPrimary mt-0.5">
-                {formatCurrency(todaySummary.pendingDues)}
+                {!dataLoaded ? (
+                  <span className="inline-block w-24 h-6 bg-black/10 animate-pulse rounded mt-1"></span>
+                ) : (
+                  formatCurrency(todaySummary.pendingDues)
+                )}
               </p>
             </div>
           </div>
@@ -197,7 +230,11 @@ export function HomeDashboard() {
               <p className={`text-lg font-bold font-mono mt-0.5 ${
                 todaySummary.netProfit >= 0 ? 'text-primary' : 'text-danger'
               }`}>
-                {formatCurrency(todaySummary.netProfit)}
+                {!dataLoaded ? (
+                  <span className="inline-block w-24 h-6 bg-black/10 animate-pulse rounded mt-1"></span>
+                ) : (
+                  formatCurrency(todaySummary.netProfit)
+                )}
               </p>
             </div>
           </div>

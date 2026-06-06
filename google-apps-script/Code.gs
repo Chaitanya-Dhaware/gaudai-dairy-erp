@@ -77,6 +77,8 @@ function setupMaster(masterIdArg) {
   // Trigger full auto-setup
   autoSetupSheets();
   saveConfigToProperties();
+  // Set up daily midnight archive trigger
+  try { setupDailyArchiveTrigger(); } catch(e) { Logger.log("Trigger setup skipped: " + e.toString()); }
   Logger.log("✅ Setup complete! Master ID: " + masterId);
   Logger.log("   Collection DB: " + CONFIG.COLLECTION_DB_ID);
   Logger.log("   Customer DB:   " + CONFIG.CUSTOMER_DB_ID);
@@ -313,6 +315,40 @@ function doPost(e) {
         break;
       case 'clearTransactions':
         result = clearTransactions(requestData);
+        break;
+
+      // --- DAILY ARCHIVE ACTIONS ---
+      case 'archivePreviousDayData':
+        result = archivePreviousDayData();
+        break;
+      case 'archiveSpecificDate':
+        result = archiveSpecificDate(requestData);
+        break;
+      case 'setupDailyArchiveTrigger':
+        result = setupDailyArchiveTrigger();
+        break;
+      case 'getArchiveStatus':
+        result = getArchiveStatus();
+        break;
+
+      // --- DAILY SPREADSHEET MANAGEMENT ---
+      case 'getDailySpreadsheetAdmin':
+        result = getDailySpreadsheetAdmin(requestData);
+        break;
+      case 'getDailySpreadsheetInfo':
+        result = getDailySpreadsheetInfo(requestData);
+        break;
+      case 'resyncDailySpreadsheet':
+        result = resyncDailySpreadsheet(requestData);
+        break;
+      case 'verifyDailySpreadsheet':
+        result = verifyDailySpreadsheet(requestData);
+        break;
+      case 'migrateToDailySpreadsheets':
+        result = migrateToDailySpreadsheets(requestData);
+        break;
+      case 'prepareDailySpreadsheet':
+        result = prepareDailySpreadsheet();
         break;
 
       // --- COLLECTION DB ACTIONS ---
@@ -1311,8 +1347,7 @@ function registerFarmer(data) {
 
 function getFarmerList() {
   var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
-  // Auto-fix existing sheets: add payment_status column if missing, fix negatives
-  ensureFarmerStatusColumn(ss);
+  // NOTE: ensureFarmerStatusColumn removed from hot path — run via runManualMigration() instead
   var sheet = ss.getSheetByName("Farmers");
   var values = sheet.getDataRange().getValues();
   var list = [];
@@ -1372,7 +1407,27 @@ function addMilkCollection(data) {
 
   colSheet.appendRow(rowData);
 
-  // Consolidating all milk collections to Milk_Collections (Daily_ tab creation removed)
+  // Sync to daily spreadsheet (non-blocking)
+  try {
+    syncCollectionToDaily({
+      entry_id: entryId,
+      farmer_name: farmerName,
+      farmer_id: data.farmer_id,
+      date: data.date,
+      milk_type: data.milk_type,
+      quantity: qty,
+      fat: fatVal,
+      snf: parseSafeFloat(data.snf) || 8.5,
+      calculated_rate: rateVal,
+      total_amount: totalVal,
+      paid_amount: paidVal,
+      due_amount: dueVal,
+      status: status,
+      time: timeOnly
+    });
+  } catch(dailyErr) {
+    logErrorToSheets("Daily spreadsheet sync error (addMilkCollection): " + dailyErr.toString());
+  }
 
   // Update farmer current_due and payment_status
   var farmSheet = ss.getSheetByName("Farmers");
@@ -1435,9 +1490,7 @@ function addMilkCollection(data) {
 
 function getCollectionEntries() {
   var ss = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
-  // Migrate existing data to new format (entry_id col A, farmer_name col B, time col N)
-  reformatMilkCollections(ss);
-  reformatPayments(ss);
+  // NOTE: reformatMilkCollections + reformatPayments removed from hot path — run via runManualMigration() instead
   var sheet = ss.getSheetByName("Milk_Collections");
   var values = sheet.getDataRange().getValues();
   var list = [];
@@ -1499,7 +1552,24 @@ function markFarmerPaid(entryId, amountCleared) {
     colSheet.getRange(i + 1, 11).setValue(paid);
     colSheet.getRange(i + 1, 12).setValue(remainingDue);
     colSheet.getRange(i + 1, 13).setValue(status);
-    
+
+    // Sync payment update to daily spreadsheet (non-blocking)
+    try {
+      var entryDate = colData[i][3];
+      if (entryDate instanceof Date) {
+        entryDate = Utilities.formatDate(entryDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      } else {
+        entryDate = String(entryDate || "").split('T')[0];
+      }
+      updateDailySpreadsheetRow(String(colData[i][0]), entryDate, {
+        paid_amount: paid,
+        due_amount: remainingDue,
+        status: status
+      });
+    } catch(dailyErr) {
+      logErrorToSheets("Daily spreadsheet sync error (markFarmerPaid): " + dailyErr.toString());
+    }
+
     // Update farmer current_due and payment_status
     var farmSheet = ss.getSheetByName("Farmers");
     var farmData = farmSheet.getDataRange().getValues();
@@ -1721,10 +1791,7 @@ function recordPayment(customerId, amount) {
 
 function getSalesHistory() {
   var ss = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
-  // Migrate existing data to new format (bill_id col A, customer_id col B, customer_name col C)
-  reformatSales(ss);
-  reformatCustomerPayments(ss);
-  
+  // NOTE: reformatSales + reformatCustomerPayments removed from hot path — run via runManualMigration() instead
   var sheet = ss.getSheetByName("Sales");
   var values = sheet.getDataRange().getValues();
   var list = [];
@@ -2015,8 +2082,8 @@ function parseSafeFloat(val) {
 }
 
 function batchLoadData() {
-  // Automatically clean up existing daily tabs
-  cleanupAllDailySheets();
+  // NOTE: archivePreviousDayData + cleanupAllDailySheets removed from hot path
+  // Archiving is handled by the daily midnight trigger (setupDailyArchiveTrigger)
 
   var farmers = [];
   var collections = [];
@@ -2399,6 +2466,900 @@ function deleteDailySheets(ss) {
   });
 }
 
+// =============================================================================
+// --- DAILY COLLECTION SPREADSHEET SYSTEM ---
+// Automatically creates one Google Spreadsheet per day for milk collections.
+// Naming: Gaudai_Collection_YYYY-MM-DD
+// Drive: Gaudai Dairy ERP Collections / Year / Month /
+// Mapping: PropertiesService (fast cache) + Master DB Settings sheet
+// =============================================================================
+
+/** In-memory cache for daily spreadsheet mappings (survives within a single execution) */
+var _dailySheetsCache = null;
+
+/**
+ * Load the daily spreadsheet mapping from PropertiesService.
+ * Uses year-based partitioning: DAILY_SHEETS_MAP_YYYY
+ */
+function loadDailySheetsMap(yearStr) {
+  if (!yearStr) {
+    var now = new Date();
+    yearStr = Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy");
+  }
+  var key = "DAILY_SHEETS_MAP_" + yearStr;
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(key);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {};
+}
+
+/**
+ * Save the daily spreadsheet mapping to PropertiesService.
+ */
+function saveDailySheetsMap(yearStr, map) {
+  var key = "DAILY_SHEETS_MAP_" + yearStr;
+  try {
+    PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(map));
+  } catch(e) {
+    logErrorToSheets("saveDailySheetsMap error: " + e.toString());
+  }
+}
+
+/**
+ * Get or create the root Drive folder "Gaudai Dairy ERP Collections".
+ * Returns the folder object.
+ */
+function getOrCreateRootFolder() {
+  var rootName = "Gaudai Dairy ERP Collections";
+  var folders = DriveApp.getFoldersByName(rootName);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(rootName);
+}
+
+/**
+ * Get or create the Year/Month subfolder hierarchy.
+ * Returns the month folder object.
+ */
+function getOrCreateDriveFolder(yearStr, monthStr) {
+  var rootFolder = getOrCreateRootFolder();
+
+  // Year folder
+  var yearFolders = rootFolder.getFoldersByName(yearStr);
+  var yearFolder = yearFolders.hasNext() ? yearFolders.next() : rootFolder.createFolder(yearStr);
+
+  // Month folder
+  var monthFolders = yearFolder.getFoldersByName(monthStr);
+  var monthFolder = monthFolders.hasNext() ? monthFolders.next() : yearFolder.createFolder(monthStr);
+
+  return monthFolder;
+}
+
+/**
+ * Get the month name from a date string (YYYY-MM-DD).
+ */
+function getMonthName(dateStr) {
+  var months = ["January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"];
+  var parts = dateStr.split('-');
+  var monthIndex = parseInt(parts[1], 10) - 1;
+  return months[monthIndex] || "January";
+}
+
+/**
+ * Setup a new daily spreadsheet with headers and formatting.
+ */
+function setupDailyCollectionSheet(ss) {
+  var headers = ["entry_id", "farmer_name", "farmer_id", "date", "milk_type",
+                 "quantity", "fat", "snf", "calculated_rate", "total_amount",
+                 "paid_amount", "due_amount", "status", "time"];
+
+  // Rename the default sheet or create Milk_Collections
+  var sheet = ss.getSheetByName("Sheet1");
+  if (sheet) {
+    sheet.setName("Milk_Collections");
+  } else {
+    sheet = ss.getSheetByName("Milk_Collections");
+    if (!sheet) {
+      sheet = ss.insertSheet("Milk_Collections");
+    }
+  }
+
+  // Set headers
+  var headerRange = sheet.getRange(1, 1, 1, headers.length);
+  headerRange.setValues([headers]);
+  headerRange.setFontWeight("bold");
+  headerRange.setBackground("#e8f5e9");
+  headerRange.setFontFamily("Roboto");
+  headerRange.setFontSize(10);
+
+  // Freeze header row
+  sheet.setFrozenRows(1);
+
+  // Auto-resize columns
+  for (var c = 1; c <= headers.length; c++) {
+    try { sheet.autoResizeColumn(c); } catch(ex) {}
+  }
+
+  return sheet;
+}
+
+/**
+ * Core: Get or create a daily spreadsheet for a given date.
+ * Returns { spreadsheetId, spreadsheetName, folderId, isNew }
+ */
+function getOrCreateDailySpreadsheet(dateStr) {
+  if (!dateStr) {
+    dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+
+  var parts = dateStr.split('-');
+  var yearStr = parts[0];
+  var monthStr = getMonthName(dateStr);
+  var ssName = "Gaudai_Collection_" + dateStr;
+
+  // 1. Check PropertiesService cache
+  var map = loadDailySheetsMap(yearStr);
+  if (map[dateStr] && map[dateStr].id) {
+    // Verify the spreadsheet still exists
+    try {
+      SpreadsheetApp.openById(map[dateStr].id);
+      return {
+        spreadsheetId: map[dateStr].id,
+        spreadsheetName: ssName,
+        folderId: map[dateStr].folderId || "",
+        isNew: false
+      };
+    } catch(e) {
+      // Spreadsheet was deleted — fall through to create new one
+      Logger.log("Daily spreadsheet " + dateStr + " was deleted, recreating...");
+    }
+  }
+
+  // 2. Create new spreadsheet
+  var newSS = SpreadsheetApp.create(ssName);
+  var spreadsheetId = newSS.getId();
+
+  // 3. Setup sheet structure
+  setupDailyCollectionSheet(newSS);
+
+  // 4. Move to correct Drive folder
+  var monthFolder = getOrCreateDriveFolder(yearStr, monthStr);
+  var file = DriveApp.getFileById(spreadsheetId);
+  monthFolder.addFile(file);
+  // Remove from root "My Drive"
+  var parents = file.getParents();
+  while (parents.hasNext()) {
+    var parent = parents.next();
+    if (parent.getId() !== monthFolder.getId()) {
+      parent.removeFile(file);
+    }
+  }
+  var folderId = monthFolder.getId();
+
+  // 5. Register in mapping
+  map[dateStr] = {
+    id: spreadsheetId,
+    folderId: folderId,
+    name: ssName,
+    count: 0,
+    createdAt: new Date().toISOString(),
+    lastSyncAt: new Date().toISOString(),
+    status: "active"
+  };
+  saveDailySheetsMap(yearStr, map);
+
+  Logger.log("✅ Created daily spreadsheet: " + ssName + " (" + spreadsheetId + ")");
+
+  return {
+    spreadsheetId: spreadsheetId,
+    spreadsheetName: ssName,
+    folderId: folderId,
+    isNew: true
+  };
+}
+
+/**
+ * Sync a collection entry to its daily spreadsheet (upsert).
+ * Prevents duplicate rows by checking entry_id.
+ */
+function syncCollectionToDaily(entryData) {
+  var dateStr = entryData.date;
+  if (!dateStr) return;
+  if (dateStr instanceof Date) {
+    dateStr = Utilities.formatDate(dateStr, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  } else {
+    dateStr = String(dateStr).split('T')[0];
+  }
+
+  var daily = getOrCreateDailySpreadsheet(dateStr);
+  var ss = SpreadsheetApp.openById(daily.spreadsheetId);
+  var sheet = ss.getSheetByName("Milk_Collections");
+  if (!sheet) {
+    sheet = setupDailyCollectionSheet(ss);
+  }
+
+  var entryId = String(entryData.entry_id || "");
+
+  // Check for existing row (prevent duplicates)
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    var colA = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < colA.length; i++) {
+      if (String(colA[i][0]) === entryId) {
+        // Update existing row
+        var rowNum = i + 2;
+        var rowData = [
+          entryData.entry_id, entryData.farmer_name, entryData.farmer_id,
+          entryData.date, entryData.milk_type, entryData.quantity,
+          entryData.fat, entryData.snf, entryData.calculated_rate,
+          entryData.total_amount, entryData.paid_amount, entryData.due_amount,
+          entryData.status, entryData.time
+        ];
+        sheet.getRange(rowNum, 1, 1, 14).setValues([rowData]);
+        Logger.log("Updated row " + rowNum + " in " + daily.spreadsheetName + " for entry " + entryId);
+        return;
+      }
+    }
+  }
+
+  // Append new row
+  var newRow = [
+    entryData.entry_id, entryData.farmer_name, entryData.farmer_id,
+    entryData.date, entryData.milk_type, entryData.quantity,
+    entryData.fat, entryData.snf, entryData.calculated_rate,
+    entryData.total_amount, entryData.paid_amount, entryData.due_amount,
+    entryData.status, entryData.time
+  ];
+  sheet.appendRow(newRow);
+
+  // Update record count in mapping
+  var yearStr = dateStr.split('-')[0];
+  var map = loadDailySheetsMap(yearStr);
+  if (map[dateStr]) {
+    map[dateStr].count = sheet.getLastRow() - 1;
+    map[dateStr].lastSyncAt = new Date().toISOString();
+    saveDailySheetsMap(yearStr, map);
+  }
+
+  Logger.log("Appended entry " + entryId + " to " + daily.spreadsheetName);
+}
+
+/**
+ * Update specific columns of a row in a daily spreadsheet.
+ * Used for payment status changes.
+ */
+function updateDailySpreadsheetRow(entryId, dateStr, updates) {
+  if (!dateStr || !entryId) return;
+  dateStr = String(dateStr).split('T')[0];
+
+  var yearStr = dateStr.split('-')[0];
+  var map = loadDailySheetsMap(yearStr);
+  if (!map[dateStr] || !map[dateStr].id) return; // No daily sheet for this date
+
+  try {
+    var ss = SpreadsheetApp.openById(map[dateStr].id);
+    var sheet = ss.getSheetByName("Milk_Collections");
+    if (!sheet) return;
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return;
+
+    // Column indices (1-based): paid_amount=11, due_amount=12, status=13
+    var colA = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < colA.length; i++) {
+      if (String(colA[i][0]) === entryId) {
+        var rowNum = i + 2;
+        if (updates.paid_amount !== undefined) sheet.getRange(rowNum, 11).setValue(updates.paid_amount);
+        if (updates.due_amount !== undefined) sheet.getRange(rowNum, 12).setValue(updates.due_amount);
+        if (updates.status !== undefined) sheet.getRange(rowNum, 13).setValue(updates.status);
+        
+        // Update lastSyncAt
+        map[dateStr].lastSyncAt = new Date().toISOString();
+        saveDailySheetsMap(yearStr, map);
+        
+        Logger.log("Updated daily row for entry " + entryId + " in " + dateStr);
+        return;
+      }
+    }
+  } catch(e) {
+    logErrorToSheets("updateDailySpreadsheetRow error: " + e.toString());
+  }
+}
+
+/**
+ * Delete a collection entry from its daily spreadsheet.
+ */
+function deleteCollectionFromDaily(entryId, dateStr) {
+  if (!dateStr || !entryId) return;
+  dateStr = String(dateStr).split('T')[0];
+  var yearStr = dateStr.split('-')[0];
+  var map = loadDailySheetsMap(yearStr);
+  if (!map[dateStr] || !map[dateStr].id) return;
+
+  try {
+    var ss = SpreadsheetApp.openById(map[dateStr].id);
+    var sheet = ss.getSheetByName("Milk_Collections");
+    if (!sheet) return;
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return;
+    var colA = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < colA.length; i++) {
+      if (String(colA[i][0]) === entryId) {
+        sheet.deleteRow(i + 2);
+        map[dateStr].count = Math.max(0, (map[dateStr].count || 1) - 1);
+        map[dateStr].lastSyncAt = new Date().toISOString();
+        saveDailySheetsMap(yearStr, map);
+        Logger.log("Deleted entry " + entryId + " from daily " + dateStr);
+        return;
+      }
+    }
+  } catch(e) {
+    logErrorToSheets("deleteCollectionFromDaily error: " + e.toString());
+  }
+}
+
+/**
+ * Proactively create today's daily spreadsheet if it doesn't exist.
+ * Called by midnight trigger to ensure spreadsheet is ready before first entry.
+ */
+function prepareDailySpreadsheet() {
+  loadConfigFromProperties();
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  var result = getOrCreateDailySpreadsheet(today);
+  return {
+    success: true,
+    message: result.isNew
+      ? "Created daily spreadsheet for " + today + ": " + result.spreadsheetName
+      : "Daily spreadsheet for " + today + " already exists.",
+    data: result
+  };
+}
+
+/**
+ * Get info about a specific date's spreadsheet.
+ */
+function getDailySpreadsheetInfo(requestData) {
+  var dateStr = requestData.date;
+  if (!dateStr) {
+    dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  var yearStr = dateStr.split('-')[0];
+  var map = loadDailySheetsMap(yearStr);
+  var entry = map[dateStr];
+
+  if (!entry || !entry.id) {
+    return { success: true, data: null, message: "No spreadsheet found for " + dateStr };
+  }
+
+  // Build Drive URL
+  var url = "https://docs.google.com/spreadsheets/d/" + entry.id + "/edit";
+
+  return {
+    success: true,
+    data: {
+      date: dateStr,
+      spreadsheetId: entry.id,
+      spreadsheetName: entry.name || ("Gaudai_Collection_" + dateStr),
+      folderId: entry.folderId || "",
+      recordCount: entry.count || 0,
+      createdAt: entry.createdAt || "",
+      lastSyncAt: entry.lastSyncAt || "",
+      status: entry.status || "active",
+      url: url,
+      year: yearStr,
+      month: getMonthName(dateStr)
+    }
+  };
+}
+
+/**
+ * Admin endpoint: Get list of all daily spreadsheets.
+ * Supports optional year filter.
+ */
+function getDailySpreadsheetAdmin(requestData) {
+  var targetYear = requestData && requestData.year;
+  var years = [];
+
+  if (targetYear) {
+    years = [String(targetYear)];
+  } else {
+    // Scan for all year maps
+    var props = PropertiesService.getScriptProperties().getProperties();
+    for (var key in props) {
+      if (key.indexOf("DAILY_SHEETS_MAP_") === 0) {
+        years.push(key.replace("DAILY_SHEETS_MAP_", ""));
+      }
+    }
+    years.sort();
+  }
+
+  var allSheets = [];
+  for (var y = 0; y < years.length; y++) {
+    var map = loadDailySheetsMap(years[y]);
+    var dates = Object.keys(map).sort();
+    for (var d = 0; d < dates.length; d++) {
+      var entry = map[dates[d]];
+      allSheets.push({
+        date: dates[d],
+        spreadsheetId: entry.id,
+        spreadsheetName: entry.name || ("Gaudai_Collection_" + dates[d]),
+        folderId: entry.folderId || "",
+        recordCount: entry.count || 0,
+        createdAt: entry.createdAt || "",
+        lastSyncAt: entry.lastSyncAt || "",
+        status: entry.status || "active",
+        url: "https://docs.google.com/spreadsheets/d/" + entry.id + "/edit",
+        year: dates[d].split('-')[0],
+        month: getMonthName(dates[d])
+      });
+    }
+  }
+
+  return {
+    success: true,
+    data: allSheets,
+    totalCount: allSheets.length
+  };
+}
+
+/**
+ * Re-sync a specific date's daily spreadsheet from the master Milk_Collections.
+ * Rebuilds the daily sheet completely from master data.
+ */
+function resyncDailySpreadsheet(requestData) {
+  loadConfigFromProperties();
+  var dateStr = requestData.date;
+  if (!dateStr) return { success: false, message: "date parameter required" };
+  dateStr = String(dateStr).split('T')[0];
+
+  if (!CONFIG.COLLECTION_DB_ID) return { success: false, message: "COLLECTION_DB_ID not configured" };
+
+  // Read all entries for this date from master
+  var tz = Session.getScriptTimeZone();
+  var ssCol = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+  var colSheet = ssCol.getSheetByName("Milk_Collections");
+  if (!colSheet || colSheet.getLastRow() <= 1) {
+    return { success: true, message: "No collection data found.", data: { recordCount: 0 } };
+  }
+
+  var allData = colSheet.getDataRange().getValues();
+  var headers = allData[0];
+  var filteredRows = [];
+  for (var i = 1; i < allData.length; i++) {
+    var cell = allData[i][3]; // date column
+    var cellDate = (cell instanceof Date)
+      ? Utilities.formatDate(cell, tz, "yyyy-MM-dd")
+      : String(cell || "").split('T')[0];
+    if (cellDate === dateStr) {
+      filteredRows.push(allData[i]);
+    }
+  }
+
+  if (filteredRows.length === 0) {
+    return { success: true, message: "No records found for " + dateStr, data: { recordCount: 0 } };
+  }
+
+  // Get or create the daily spreadsheet
+  var daily = getOrCreateDailySpreadsheet(dateStr);
+  var ss = SpreadsheetApp.openById(daily.spreadsheetId);
+  var sheet = ss.getSheetByName("Milk_Collections");
+  if (!sheet) sheet = setupDailyCollectionSheet(ss);
+
+  // Clear existing data (keep header)
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.deleteRows(2, lastRow - 1);
+  }
+
+  // Write all filtered rows
+  if (filteredRows.length > 0) {
+    sheet.getRange(2, 1, filteredRows.length, filteredRows[0].length).setValues(filteredRows);
+  }
+
+  // Update mapping
+  var yearStr = dateStr.split('-')[0];
+  var map = loadDailySheetsMap(yearStr);
+  if (map[dateStr]) {
+    map[dateStr].count = filteredRows.length;
+    map[dateStr].lastSyncAt = new Date().toISOString();
+    map[dateStr].status = "active";
+    saveDailySheetsMap(yearStr, map);
+  }
+
+  return {
+    success: true,
+    message: "Re-synced " + filteredRows.length + " records for " + dateStr,
+    data: {
+      date: dateStr,
+      recordCount: filteredRows.length,
+      spreadsheetId: daily.spreadsheetId,
+      spreadsheetName: daily.spreadsheetName
+    }
+  };
+}
+
+/**
+ * Verify consistency between master sheet and daily spreadsheet for a date.
+ */
+function verifyDailySpreadsheet(requestData) {
+  loadConfigFromProperties();
+  var dateStr = requestData.date;
+  if (!dateStr) return { success: false, message: "date parameter required" };
+  dateStr = String(dateStr).split('T')[0];
+
+  if (!CONFIG.COLLECTION_DB_ID) return { success: false, message: "Not configured" };
+
+  var tz = Session.getScriptTimeZone();
+
+  // Count in master
+  var ssCol = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+  var colSheet = ssCol.getSheetByName("Milk_Collections");
+  var masterCount = 0;
+  if (colSheet && colSheet.getLastRow() > 1) {
+    var allData = colSheet.getDataRange().getValues();
+    for (var i = 1; i < allData.length; i++) {
+      var cell = allData[i][3];
+      var cellDate = (cell instanceof Date)
+        ? Utilities.formatDate(cell, tz, "yyyy-MM-dd")
+        : String(cell || "").split('T')[0];
+      if (cellDate === dateStr) masterCount++;
+    }
+  }
+
+  // Count in daily
+  var dailyCount = 0;
+  var yearStr = dateStr.split('-')[0];
+  var map = loadDailySheetsMap(yearStr);
+  if (map[dateStr] && map[dateStr].id) {
+    try {
+      var ssd = SpreadsheetApp.openById(map[dateStr].id);
+      var sh = ssd.getSheetByName("Milk_Collections");
+      if (sh) dailyCount = Math.max(0, sh.getLastRow() - 1);
+    } catch(e) {}
+  }
+
+  var isConsistent = masterCount === dailyCount;
+
+  return {
+    success: true,
+    data: {
+      date: dateStr,
+      masterCount: masterCount,
+      dailyCount: dailyCount,
+      isConsistent: isConsistent,
+      hasDailySheet: !!(map[dateStr] && map[dateStr].id),
+      message: isConsistent ? "Consistent" : "MISMATCH: Master=" + masterCount + ", Daily=" + dailyCount
+    }
+  };
+}
+
+/**
+ * Migrate historical data from master Milk_Collections to daily spreadsheets.
+ * Processes in batches to stay within Apps Script time limits.
+ * Safe to run multiple times (idempotent).
+ */
+function migrateToDailySpreadsheets(requestData) {
+  loadConfigFromProperties();
+  if (!CONFIG.COLLECTION_DB_ID) return { success: false, message: "COLLECTION_DB_ID not configured" };
+
+  var batchSize = (requestData && requestData.batchSize) ? parseInt(requestData.batchSize) : 20;
+  var skipExisting = (requestData && requestData.skipExisting !== false);
+  var tz = Session.getScriptTimeZone();
+
+  // Read all collection entries
+  var ssCol = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+  var colSheet = ssCol.getSheetByName("Milk_Collections");
+  if (!colSheet || colSheet.getLastRow() <= 1) {
+    return { success: true, message: "No collection data to migrate.", data: { totalRecords: 0, datesProcessed: 0 } };
+  }
+
+  var allData = colSheet.getDataRange().getValues();
+  var headers = allData[0];
+
+  // Group rows by date
+  var dateGroups = {};
+  for (var i = 1; i < allData.length; i++) {
+    var cell = allData[i][3];
+    var dateKey = (cell instanceof Date)
+      ? Utilities.formatDate(cell, tz, "yyyy-MM-dd")
+      : String(cell || "").split('T')[0];
+    if (!dateKey || dateKey === "undefined" || dateKey === "") continue;
+    if (!dateGroups[dateKey]) dateGroups[dateKey] = [];
+    dateGroups[dateKey].push(allData[i]);
+  }
+
+  var allDates = Object.keys(dateGroups).sort();
+  var report = {
+    totalRecords: allData.length - 1,
+    totalDates: allDates.length,
+    datesProcessed: 0,
+    datesSkipped: 0,
+    datesCreated: 0,
+    errors: [],
+    details: []
+  };
+
+  // Process in batches
+  var processed = 0;
+  for (var d = 0; d < allDates.length && processed < batchSize; d++) {
+    var dateStr = allDates[d];
+    var rows = dateGroups[dateStr];
+    var yearStr = dateStr.split('-')[0];
+    var map = loadDailySheetsMap(yearStr);
+
+    // Skip if already exists and skipExisting is true
+    if (skipExisting && map[dateStr] && map[dateStr].id) {
+      try {
+        SpreadsheetApp.openById(map[dateStr].id); // verify it exists
+        report.datesSkipped++;
+        report.details.push({ date: dateStr, action: "skipped", records: rows.length, reason: "already exists" });
+        continue;
+      } catch(e) {
+        // Spreadsheet deleted, proceed to recreate
+      }
+    }
+
+    try {
+      var daily = getOrCreateDailySpreadsheet(dateStr);
+      var ss = SpreadsheetApp.openById(daily.spreadsheetId);
+      var sheet = ss.getSheetByName("Milk_Collections");
+      if (!sheet) sheet = setupDailyCollectionSheet(ss);
+
+      // Clear existing data and rewrite
+      var lastRow = sheet.getLastRow();
+      if (lastRow > 1) {
+        sheet.deleteRows(2, lastRow - 1);
+      }
+
+      if (rows.length > 0) {
+        sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+      }
+
+      // Update mapping count
+      map = loadDailySheetsMap(yearStr);
+      if (map[dateStr]) {
+        map[dateStr].count = rows.length;
+        map[dateStr].lastSyncAt = new Date().toISOString();
+        saveDailySheetsMap(yearStr, map);
+      }
+
+      report.datesCreated++;
+      report.details.push({ date: dateStr, action: "migrated", records: rows.length, spreadsheetId: daily.spreadsheetId });
+      processed++;
+    } catch(e) {
+      report.errors.push({ date: dateStr, error: e.toString() });
+      report.details.push({ date: dateStr, action: "error", records: rows.length, error: e.toString() });
+      processed++;
+    }
+  }
+
+  report.datesProcessed = processed;
+  var hasMore = (report.datesSkipped + processed) < allDates.length;
+
+  return {
+    success: true,
+    message: "Migration batch complete. Processed " + processed + " dates, skipped " + report.datesSkipped +
+             ", errors: " + report.errors.length + (hasMore ? ". More dates remaining — run again." : ". All dates processed."),
+    data: report,
+    hasMore: hasMore
+  };
+}
+
+// =============================================================================
+// --- DAILY ARCHIVING SYSTEM ---
+// Creates separate Google Drive spreadsheets for each day's data:
+//   "DD-MM-YY Collection", "DD-MM-YY Sales", "DD-MM-YY Expenses"
+// Auto-triggered at midnight IST. Also checked on every batchLoadData call.
+// =============================================================================
+
+/**
+ * Archives yesterday's data into separate named Google Spreadsheets.
+ * Skips silently if already archived. Safe to call repeatedly.
+ */
+function archivePreviousDayData() {
+  loadConfigFromProperties();
+  if (!CONFIG.COLLECTION_DB_ID && !CONFIG.CUSTOMER_DB_ID && !CONFIG.EXPENSE_DB_ID) return { success: false, message: "Not configured" };
+
+  var tz = Session.getScriptTimeZone();
+  var yesterday = new Date(new Date().getTime() - 24 * 60 * 60 * 1000);
+  var yesterdayStr = Utilities.formatDate(yesterday, tz, "yyyy-MM-dd");
+
+  // Fast check: already archived?
+  var props = PropertiesService.getScriptProperties();
+  var archivedDates = [];
+  try { archivedDates = JSON.parse(props.getProperty("ARCHIVED_DATES") || "[]"); } catch(e) { archivedDates = []; }
+  if (archivedDates.indexOf(yesterdayStr) !== -1) {
+    return { success: true, message: "Already archived for " + yesterdayStr, alreadyDone: true };
+  }
+
+  var parts = yesterdayStr.split('-'); // [yyyy, mm, dd]
+  var archiveName = parts[2] + '-' + parts[1] + '-' + parts[0].slice(2); // DD-MM-YY
+  return _runArchiveForDate(yesterdayStr, archiveName, archivedDates, props);
+}
+
+/**
+ * Archives data for a specific date (for manual/backfill use via API).
+ * requestData.date = "yyyy-MM-dd"
+ */
+function archiveSpecificDate(requestData) {
+  loadConfigFromProperties();
+  var dateStr = requestData.date;
+  if (!dateStr) return { success: false, message: "date parameter required (yyyy-MM-dd)" };
+
+  var parts = dateStr.split('-');
+  var archiveName = parts[2] + '-' + parts[1] + '-' + parts[0].slice(2); // DD-MM-YY
+
+  var props = PropertiesService.getScriptProperties();
+  var archivedDates = [];
+  try { archivedDates = JSON.parse(props.getProperty("ARCHIVED_DATES") || "[]"); } catch(e) { archivedDates = []; }
+
+  // Allow forced re-archive: remove from done list if present
+  var idx = archivedDates.indexOf(dateStr);
+  if (idx !== -1 && !requestData.force) {
+    return { success: true, message: "Already archived for " + dateStr + ". Use force:true to re-archive.", alreadyDone: true };
+  }
+  if (idx !== -1) archivedDates.splice(idx, 1);
+
+  return _runArchiveForDate(dateStr, archiveName, archivedDates, props);
+}
+
+/** Internal: performs the actual archive for a given date string */
+function _runArchiveForDate(dateStr, archiveName, archivedDates, props) {
+  var tz = Session.getScriptTimeZone();
+  var archivedAny = false;
+  var results = [];
+
+  // Helper: filter rows by date column index
+  function filterRowsByDate(allData, dateColIndex) {
+    var out = [];
+    for (var i = 1; i < allData.length; i++) {
+      var cell = allData[i][dateColIndex];
+      var cellDate = (cell instanceof Date) ? Utilities.formatDate(cell, tz, "yyyy-MM-dd") : String(cell || "").split('T')[0];
+      if (cellDate === dateStr) out.push(allData[i]);
+    }
+    return out;
+  }
+
+  // Helper: write rows to a new spreadsheet
+  function writeArchiveSheet(ssName, sheetTabName, headers, rows) {
+    var newSS = SpreadsheetApp.create(ssName);
+    var sh = newSS.getActiveSheet();
+    sh.setName(sheetTabName);
+    // Write header with bold formatting
+    var headerRange = sh.getRange(1, 1, 1, headers.length);
+    headerRange.setValues([headers]);
+    headerRange.setFontWeight("bold");
+    headerRange.setBackground("#e8f5e9");
+    // Write data rows
+    for (var r = 0; r < rows.length; r++) {
+      sh.appendRow(rows[r]);
+    }
+    // Auto-resize columns
+    for (var c = 1; c <= headers.length; c++) {
+      try { sh.autoResizeColumn(c); } catch(ex) {}
+    }
+    return newSS;
+  }
+
+  // 1. Archive Milk Collections
+  if (CONFIG.COLLECTION_DB_ID) {
+    try {
+      var ssCol = SpreadsheetApp.openById(CONFIG.COLLECTION_DB_ID);
+      var colSheet = ssCol.getSheetByName("Milk_Collections");
+      if (colSheet && colSheet.getLastRow() > 1) {
+        var colData = colSheet.getDataRange().getValues();
+        var filteredRows = filterRowsByDate(colData, 3); // date in column D (index 3)
+        if (filteredRows.length > 0) {
+          var newSS = writeArchiveSheet(archiveName + " Collection", "Collection", colData[0], filteredRows);
+          results.push({ type: "Collection", url: newSS.getUrl(), rows: filteredRows.length, name: archiveName + " Collection" });
+          archivedAny = true;
+          Logger.log("✅ Collection archive created: " + newSS.getUrl());
+        } else {
+          Logger.log("No Collection data for " + dateStr);
+        }
+      }
+    } catch(e) {
+      logErrorToSheets("_runArchiveForDate Collection error (" + dateStr + "): " + e.toString());
+    }
+  }
+
+  // 2. Archive Sales
+  if (CONFIG.CUSTOMER_DB_ID) {
+    try {
+      var ssCust = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
+      var salesSheet = ssCust.getSheetByName("Sales");
+      if (salesSheet && salesSheet.getLastRow() > 1) {
+        var salesData = salesSheet.getDataRange().getValues();
+        var filteredRows = filterRowsByDate(salesData, 3); // date in column D (index 3)
+        if (filteredRows.length > 0) {
+          var newSS = writeArchiveSheet(archiveName + " Sales", "Sales", salesData[0], filteredRows);
+          results.push({ type: "Sales", url: newSS.getUrl(), rows: filteredRows.length, name: archiveName + " Sales" });
+          archivedAny = true;
+          Logger.log("✅ Sales archive created: " + newSS.getUrl());
+        } else {
+          Logger.log("No Sales data for " + dateStr);
+        }
+      }
+    } catch(e) {
+      logErrorToSheets("_runArchiveForDate Sales error (" + dateStr + "): " + e.toString());
+    }
+  }
+
+  // 3. Archive Expenses
+  if (CONFIG.EXPENSE_DB_ID) {
+    try {
+      var ssExp = SpreadsheetApp.openById(CONFIG.EXPENSE_DB_ID);
+      var expSheet = ssExp.getSheetByName("Expenses");
+      if (expSheet && expSheet.getLastRow() > 1) {
+        var expData = expSheet.getDataRange().getValues();
+        var filteredRows = filterRowsByDate(expData, 1); // date in column B (index 1) for Expenses
+        if (filteredRows.length > 0) {
+          var newSS = writeArchiveSheet(archiveName + " Expenses", "Expenses", expData[0], filteredRows);
+          results.push({ type: "Expenses", url: newSS.getUrl(), rows: filteredRows.length, name: archiveName + " Expenses" });
+          archivedAny = true;
+          Logger.log("✅ Expenses archive created: " + newSS.getUrl());
+        } else {
+          Logger.log("No Expenses data for " + dateStr);
+        }
+      }
+    } catch(e) {
+      logErrorToSheets("_runArchiveForDate Expenses error (" + dateStr + "): " + e.toString());
+    }
+  }
+
+  if (archivedAny) {
+    archivedDates.push(dateStr);
+    props.setProperty("ARCHIVED_DATES", JSON.stringify(archivedDates));
+    Logger.log("Archive completed for date: " + dateStr);
+  }
+
+  return {
+    success: true,
+    message: archivedAny
+      ? "Archived " + archiveName + " (Collection, Sales, Expenses) to Google Drive"
+      : "No data found for " + dateStr + " — nothing archived",
+    date: dateStr,
+    archived: archivedAny,
+    data: results
+  };
+}
+
+/**
+ * Returns the list of dates that have been archived.
+ */
+function getArchiveStatus() {
+  var props = PropertiesService.getScriptProperties();
+  var archivedDates = [];
+  try { archivedDates = JSON.parse(props.getProperty("ARCHIVED_DATES") || "[]"); } catch(e) { archivedDates = []; }
+  return { success: true, data: { archivedDates: archivedDates } };
+}
+
+/**
+ * Sets up (or resets) a daily midnight IST time-based trigger for archivePreviousDayData.
+ * Run once from Apps Script editor OR called automatically via setupMaster.
+ */
+function setupDailyArchiveTrigger() {
+  // Remove any existing archive trigger to avoid duplicates
+  var triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(function(t) {
+    if (t.getHandlerFunction() === 'archivePreviousDayData') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+
+  // Daily trigger at 00:00–01:00 (uses script timezone, configured as Asia/Kolkata)
+  ScriptApp.newTrigger('dailyMidnightRoutine')
+    .timeBased()
+    .atHour(0)
+    .nearMinute(5)
+    .everyDays(1)
+    .create();
+
+  Logger.log("✅ Daily trigger created — fires at ~12:05 AM every day (archive + daily sheet prep)");
+  return { success: true, message: "Daily trigger configured for midnight IST (archive + daily spreadsheet creation)" };
+}
+
 function cleanupAllDailySheets() {
   try {
     loadConfigFromProperties();
@@ -2417,4 +3378,46 @@ function cleanupAllDailySheets() {
   } catch(e) {
     logErrorToSheets("cleanupAllDailySheets error: " + e.toString());
   }
+}
+
+/**
+ * Combined daily midnight routine.
+ * Called by the daily trigger at 12:05 AM IST.
+ * 1. Archives yesterday's data (old archive system)
+ * 2. Prepares today's daily collection spreadsheet
+ * 3. Verifies yesterday's daily spreadsheet
+ */
+function dailyMidnightRoutine() {
+  Logger.log("🌙 Daily midnight routine starting...");
+
+  // 1. Archive yesterday (existing system)
+  try {
+    archivePreviousDayData();
+  } catch(e) {
+    logErrorToSheets("dailyMidnightRoutine archive error: " + e.toString());
+  }
+
+  // 2. Prepare today's daily collection spreadsheet
+  try {
+    prepareDailySpreadsheet();
+  } catch(e) {
+    logErrorToSheets("dailyMidnightRoutine prepareDailySpreadsheet error: " + e.toString());
+  }
+
+  // 3. Verify yesterday's daily spreadsheet
+  try {
+    var yesterday = new Date(new Date().getTime() - 24 * 60 * 60 * 1000);
+    var yesterdayStr = Utilities.formatDate(yesterday, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    var verifyResult = verifyDailySpreadsheet({ date: yesterdayStr });
+    if (verifyResult.data && !verifyResult.data.isConsistent) {
+      Logger.log("⚠️ Yesterday's daily spreadsheet is inconsistent: " + verifyResult.data.message);
+      // Auto-resync if inconsistent
+      resyncDailySpreadsheet({ date: yesterdayStr });
+      Logger.log("✅ Auto-resynced yesterday's daily spreadsheet.");
+    }
+  } catch(e) {
+    logErrorToSheets("dailyMidnightRoutine verify error: " + e.toString());
+  }
+
+  Logger.log("🌙 Daily midnight routine completed.");
 }
