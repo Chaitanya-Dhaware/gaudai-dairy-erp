@@ -7,7 +7,7 @@
 import { db } from './firebase';
 import {
   collection, doc, setDoc, updateDoc, deleteDoc,
-  getDocs, getDoc, writeBatch, query, where, orderBy, limit
+  getDocs, getDoc, writeBatch
 } from 'firebase/firestore';
 
 import { initMockDB } from './api';

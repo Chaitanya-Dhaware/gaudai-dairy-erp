@@ -32,28 +32,14 @@ export default function ChatInput() {
     }
   };
 
-  // ─── Send Message ──────────────────────────────────────────────
-
-  const handleSend = useCallback(() => {
-    if (isProcessing) return;
-
-    if (selectedFile) {
-      sendImage(selectedFile);
-      clearFile();
-      setText('');
-      return;
-    }
-
-    if (text.trim()) {
-      sendMessage(text.trim());
-      setText('');
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
-    }
-  }, [text, selectedFile, isProcessing, sendMessage, sendImage]);
-
   // ─── File Upload ──────────────────────────────────────────────
+
+  const clearFile = useCallback(() => {
+    if (filePreview) URL.revokeObjectURL(filePreview);
+    setSelectedFile(null);
+    setFilePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [filePreview]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
@@ -83,12 +69,26 @@ export default function ChatInput() {
     }
   };
 
-  const clearFile = () => {
-    if (filePreview) URL.revokeObjectURL(filePreview);
-    setSelectedFile(null);
-    setFilePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  // ─── Send Message ──────────────────────────────────────────────
+
+  const handleSend = useCallback(() => {
+    if (isProcessing) return;
+
+    if (selectedFile) {
+      sendImage(selectedFile);
+      clearFile();
+      setText('');
+      return;
+    }
+
+    if (text.trim()) {
+      sendMessage(text.trim());
+      setText('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+    }
+  }, [text, selectedFile, isProcessing, sendMessage, sendImage, clearFile]);
 
   const formatFileSize = (bytes) => {
     if (bytes < 1024) return bytes + ' B';

@@ -1,16 +1,12 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
-import { Droplet, Users, Receipt, PieChart, TrendingUp, TrendingDown, Clock, ShieldCheck, FileSpreadsheet, ExternalLink, Loader2 } from 'lucide-react';
+import { Droplet, Users, Receipt, PieChart, TrendingUp, TrendingDown, Clock, ShieldCheck, FileSpreadsheet, ExternalLink } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function HomeDashboard() {
   const { t, i18n } = useTranslation();
   const { setWorkspace, todaySummary, user, settings, dataLoaded, collections } = useAppStore();
   const isMarathi = i18n.language === 'mr';
-
-  const appScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || '';
-  const isMockMode = !appScriptUrl || appScriptUrl.includes('placeholder');
 
   const formatCurrency = (val) => {
     return new Intl.NumberFormat(isMarathi ? 'mr-IN' : 'en-IN', {

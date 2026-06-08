@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { processUserMessage, processConversation, processOCRImage, executeAction, generateLocalReport } from '../utils/gaudaiAI';
+import { processConversation, processOCRImage, executeAction, generateLocalReport } from '../utils/gaudaiAI';
 import { useAppStore } from './appStore';
 
 /**

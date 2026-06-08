@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
-import { Search, UserPlus, FileInput, IndianRupee, BarChart2, ShieldAlert, Calendar, Trash2 } from 'lucide-react';
+import { Search, UserPlus, FileInput, IndianRupee, BarChart2, Calendar, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function CollectionWorkspace() {

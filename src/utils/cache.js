@@ -42,7 +42,7 @@ export function getCached(key) {
     }
     
     return data;
-  } catch (e) {
+  } catch {
     return null;
   }
 }

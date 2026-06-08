@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useChatStore } from '../../store/chatStore';
 import { MessageCircle, X } from 'lucide-react';
 import ChatPanel from './ChatPanel';
