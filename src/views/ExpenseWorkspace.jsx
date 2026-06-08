@@ -40,7 +40,7 @@ export function ExpenseWorkspace() {
       <div className="flex border-b border-black/[0.08] overflow-x-auto whitespace-nowrap scrollbar-none gap-2">
         <button
           onClick={() => setActiveTab('add')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'add' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -48,7 +48,7 @@ export function ExpenseWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('list')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'list' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -56,7 +56,7 @@ export function ExpenseWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('monthly')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'monthly' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -64,7 +64,7 @@ export function ExpenseWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('analytics')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'analytics' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >

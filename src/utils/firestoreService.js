@@ -15,6 +15,12 @@ import { initMockDB } from './api';
 const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || '';
 const IS_MOCK_MODE = !APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('placeholder');
 
+// Safe parsing helper to prevent NaN propagation
+const getSafeFloat = (val) => {
+  const n = parseFloat(val);
+  return isNaN(n) ? 0 : n;
+};
+
 function ensureMockDB() {
   if (IS_MOCK_MODE) {
     initMockDB();
@@ -351,7 +357,7 @@ export async function addMilkCollection(data, settings) {
 
     const fIdx = farmers.findIndex(f => f.farmer_id === data.farmer_id);
     if (fIdx !== -1) {
-      farmers[fIdx].current_due = (farmers[fIdx].current_due || 0) + dueAmount;
+      farmers[fIdx].current_due = getSafeFloat(farmers[fIdx].current_due) + dueAmount;
       localStorage.setItem('GAUDAI_FARMERS', JSON.stringify(farmers));
     }
     return { success: true, message: 'Milk collection saved', data: entry };
@@ -386,7 +392,7 @@ export async function addMilkCollection(data, settings) {
     const farmerRef = doc(db, 'farmers', data.farmer_id);
     const farmerSnap = await getDoc(farmerRef);
     if (farmerSnap.exists()) {
-      const currentDue = (farmerSnap.data().current_due || 0) + dueAmount;
+      const currentDue = getSafeFloat(farmerSnap.data().current_due) + dueAmount;
       batch.update(farmerRef, { current_due: currentDue });
     }
 
@@ -421,7 +427,7 @@ export async function markFarmerPaid(entryId, amount) {
 
       const fIdx = farmers.findIndex(f => f.farmer_id === entry.farmer_id);
       if (fIdx !== -1) {
-        farmers[fIdx].current_due = Math.max(0, (farmers[fIdx].current_due || 0) - finalAmt);
+        farmers[fIdx].current_due = Math.max(0, getSafeFloat(farmers[fIdx].current_due) - finalAmt);
         localStorage.setItem('GAUDAI_FARMERS', JSON.stringify(farmers));
       }
       return { success: true, message: 'Payment recorded' };
@@ -452,7 +458,7 @@ export async function markFarmerPaid(entryId, amount) {
     const farmerRef = doc(db, 'farmers', entry.farmer_id);
     const farmerSnap = await getDoc(farmerRef);
     if (farmerSnap.exists()) {
-      const currentDue = Math.max(0, (farmerSnap.data().current_due || 0) - finalAmt);
+      const currentDue = Math.max(0, getSafeFloat(farmerSnap.data().current_due) - finalAmt);
       batch.update(farmerRef, { current_due: currentDue });
     }
 
@@ -632,7 +638,7 @@ export async function addSale(data) {
 
     const custIdx = customers.findIndex(c => c.customer_id === data.customer_id);
     if (custIdx !== -1) {
-      customers[custIdx].current_due = (customers[custIdx].current_due || 0) + dueVal;
+      customers[custIdx].current_due = getSafeFloat(customers[custIdx].current_due) + dueVal;
       localStorage.setItem('GAUDAI_CUSTOMERS', JSON.stringify(customers));
     }
     return { success: true, message: 'Sale recorded', data: sale };
@@ -662,7 +668,7 @@ export async function addSale(data) {
     const customerRef = doc(db, 'customers', data.customer_id);
     const customerSnap = await getDoc(customerRef);
     if (customerSnap.exists()) {
-      const currentDue = (customerSnap.data().current_due || 0) + dueVal;
+      const currentDue = getSafeFloat(customerSnap.data().current_due) + dueVal;
       batch.update(customerRef, { current_due: currentDue });
     }
 
@@ -685,7 +691,7 @@ export async function recordCustomerPayment(customerId, amount) {
 
     const cIdx = customers.findIndex(c => c.customer_id === customerId);
     if (cIdx !== -1) {
-      customers[cIdx].current_due = Math.max(0, (customers[cIdx].current_due || 0) - amt);
+      customers[cIdx].current_due = Math.max(0, getSafeFloat(customers[cIdx].current_due) - amt);
       localStorage.setItem('GAUDAI_CUSTOMERS', JSON.stringify(customers));
     }
 
@@ -713,7 +719,7 @@ export async function recordCustomerPayment(customerId, amount) {
     const customerRef = doc(db, 'customers', customerId);
     const customerSnap = await getDoc(customerRef);
     if (customerSnap.exists()) {
-      const currentDue = Math.max(0, (customerSnap.data().current_due || 0) - amt);
+      const currentDue = Math.max(0, getSafeFloat(customerSnap.data().current_due) - amt);
       batch.update(customerRef, { current_due: currentDue });
     }
 

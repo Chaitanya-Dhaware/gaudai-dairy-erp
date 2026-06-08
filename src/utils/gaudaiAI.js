@@ -378,61 +378,95 @@ export async function executeAction(action, appStore) {
       }
 
       case 'ADD_EXPENSE': {
+        const expenseReason = data.reason || data.description || 'Expense';
+        const expenseAmount = parseFloat(data.amount || data.price || 0) || 0;
         const success = await appStore.getState().addExpense({
           date: data.date || new Date().toISOString().split('T')[0],
-          reason: data.reason,
-          amount: parseFloat(data.amount),
+          reason: expenseReason,
+          amount: expenseAmount,
           category: data.category || 'Other',
           payment_method: data.payment_method || 'Cash',
-          notes: data.notes || ''
+          notes: data.notes || data.comment || ''
         });
         return {
           success,
           message: success
-            ? `✅ Expense recorded! ${data.reason} — ₹${parseFloat(data.amount).toLocaleString('en-IN')}`
+            ? `✅ Expense recorded! ${expenseReason} — ₹${expenseAmount.toLocaleString('en-IN')}`
             : '❌ Failed to save expense. Please try again.'
         };
       }
 
       case 'ADD_SALE': {
+        const totalAmt = parseFloat(data.total_amount || data.total || 0) || 0;
+        const paidAmt = parseFloat(data.paid_amount || data.paid || 0) || 0;
+        const dueAmt = parseFloat(data.due_amount || data.due || (totalAmt - paidAmt)) || 0;
         const success = await appStore.getState().addSale({
           customer_id: data.customer_id,
           date: data.date || new Date().toISOString().split('T')[0],
           items: data.items || [],
-          total_amount: parseFloat(data.total_amount),
-          paid_amount: parseFloat(data.paid_amount) || 0,
-          due_amount: parseFloat(data.due_amount) || parseFloat(data.total_amount)
+          total_amount: totalAmt,
+          paid_amount: paidAmt,
+          due_amount: dueAmt
         });
         return {
           success,
           message: success
-            ? `✅ Sale recorded! Bill Total: ₹${parseFloat(data.total_amount).toLocaleString('en-IN')}`
+            ? `✅ Sale recorded! Bill Total: ₹${totalAmt.toLocaleString('en-IN')}`
             : '❌ Failed to save sale. Please try again.'
         };
       }
 
       case 'RECORD_PAYMENT': {
-        const success = await appStore.getState().recordCustomerPayment(
+        const state = appStore.getState();
+        const customer = state.customers.find(c => c.customer_id === data.customer_id);
+        let amount = parseFloat(data.amount);
+        if (isNaN(amount) || data.amount === 'all' || !data.amount) {
+          amount = customer ? (customer.current_due || 0) : 0;
+        }
+
+        const success = await state.recordCustomerPayment(
           data.customer_id,
-          parseFloat(data.amount)
+          amount
         );
         return {
           success,
           message: success
-            ? `✅ Payment of ₹${parseFloat(data.amount).toLocaleString('en-IN')} recorded for ${data.customer_name || data.customer_id}`
+            ? `✅ Payment of ₹${amount.toLocaleString('en-IN')} recorded for ${data.customer_name || data.customer_id}`
             : '❌ Failed to record payment. Please try again.'
         };
       }
 
       case 'MARK_FARMER_PAID': {
-        const success = await appStore.getState().markFarmerPaid(
-          data.entry_id,
-          parseFloat(data.amount)
-        );
+        const state = appStore.getState();
+        let entryId = data.entry_id;
+        let amount = parseFloat(data.amount);
+
+        // If entry_id is missing but we have farmer_id, find the oldest collection entry for this farmer with pending due
+        if (!entryId && data.farmer_id) {
+          const unpaid = (state.collections || [])
+            .filter(c => c.farmer_id === data.farmer_id && (c.due_amount || 0) > 0)
+            .sort((a, b) => a.date.localeCompare(b.date)); // Oldest first
+          if (unpaid.length > 0) {
+            entryId = unpaid[0].entry_id;
+            if (isNaN(amount) || data.amount === 'all' || !data.amount) {
+              amount = unpaid[0].due_amount || 0;
+            }
+          }
+        }
+
+        if (isNaN(amount)) {
+          amount = 0;
+        }
+
+        if (!entryId) {
+          return { success: false, message: '❌ Error: No pending due collection found for this farmer.' };
+        }
+
+        const success = await state.markFarmerPaid(entryId, amount);
         return {
           success,
           message: success
-            ? `✅ Farmer payment of ₹${parseFloat(data.amount).toLocaleString('en-IN')} recorded`
+            ? `✅ Farmer payment of ₹${amount.toLocaleString('en-IN')} recorded`
             : '❌ Failed to record farmer payment. Please try again.'
         };
       }

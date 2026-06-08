@@ -150,9 +150,9 @@ export function HomeDashboard() {
                 </div>
               </div>
               
-              <div className="mt-6 pt-4 border-t border-black/[0.04] flex justify-between items-center text-xs font-semibold text-textPrimary">
+              <div className="mt-6 pt-4 border-t border-black/[0.04] flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center text-xs font-semibold text-textPrimary">
                 <span className="font-mono">{card.metric}</span>
-                <span className="text-primary hover:underline text-[10px] uppercase tracking-wider">
+                <span className="text-primary hover:underline text-[10px] uppercase tracking-wider self-start sm:self-auto">
                   {isMarathi ? 'उघडा →' : 'Enter Workspace →'}
                 </span>
               </div>

@@ -41,10 +41,10 @@ export function Layout({ children }) {
       <div className="flex-1 flex flex-col lg:pl-60 pb-16 lg:pb-0 min-h-screen">
         
         {/* Header Bar */}
-        <header className="h-16 bg-white border-b border-black/[0.08] flex items-center justify-between px-6 sticky top-0 z-20 shadow-sm">
+        <header className="h-16 bg-white border-b border-black/[0.08] flex items-center justify-between px-4 sm:px-6 sticky top-0 z-20 shadow-sm">
           {/* Left Title */}
-          <div className="flex items-center space-x-3">
-            <h2 className="text-lg font-bold text-primary font-head tracking-tight">
+          <div className="flex items-center space-x-3 min-w-0">
+            <h2 className="text-sm sm:text-base md:text-lg font-bold text-primary font-head tracking-tight truncate">
               {getWorkspaceTitle()}
             </h2>
             {activeWorkspace === 'dashboard' && (
@@ -55,7 +55,7 @@ export function Layout({ children }) {
           </div>
 
           {/* Right Controls */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             {/* Global Language Toggle */}
             <LanguageToggle />
 

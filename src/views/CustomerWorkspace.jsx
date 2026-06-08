@@ -43,7 +43,7 @@ export function CustomerWorkspace() {
       <div className="flex border-b border-black/[0.08] overflow-x-auto whitespace-nowrap scrollbar-none gap-2">
         <button
           onClick={() => setActiveTab('new-bill')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'new-bill' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -51,7 +51,7 @@ export function CustomerWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('register')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'register' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -59,7 +59,7 @@ export function CustomerWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('products')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'products' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -67,7 +67,7 @@ export function CustomerWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('dues')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'dues' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -75,7 +75,7 @@ export function CustomerWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('history')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'history' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >

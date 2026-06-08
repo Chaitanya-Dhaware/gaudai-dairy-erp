@@ -63,3 +63,20 @@ h1, h2, h3, h4, h5, h6 {
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s infinite;
 }
+
+/* Scrollbar-none custom utility to hide scrollbars while preserving scroll functionality */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Prevent automatic browser zoom when focusing inputs on mobile devices */
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+

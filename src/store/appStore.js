@@ -13,6 +13,12 @@ import { saveDailySpreadsheetMapping } from '../utils/firestoreService';
 // Legacy API for settings/archive endpoints that still need GAS
 import { callAPI } from '../utils/api';
 
+// Safe parsing helper for currency values to prevent propagation of NaN values
+const getSafeDue = (due) => {
+  const d = parseFloat(due);
+  return isNaN(d) ? 0 : d;
+};
+
 export const useAppStore = create((set, get) => ({
   // Authentication & Users
   user: null, // Current active user role details
@@ -263,7 +269,7 @@ export const useAppStore = create((set, get) => ({
         const updatedCollections = [entry, ...get().collections];
         const updatedFarmers = get().farmers.map(f => {
           if (f.farmer_id === data.farmer_id) {
-            return { ...f, current_due: (f.current_due || 0) + entry.due_amount };
+            return { ...f, current_due: getSafeDue(f.current_due) + entry.due_amount };
           }
           return f;
         });
@@ -313,7 +319,7 @@ export const useAppStore = create((set, get) => ({
         const entry = get().collections.find(c => c.entry_id === entryId);
         const updatedFarmers = get().farmers.map(f => {
           if (entry && f.farmer_id === entry.farmer_id) {
-            return { ...f, current_due: Math.max(0, (f.current_due || 0) - amtVal) };
+            return { ...f, current_due: Math.max(0, getSafeDue(f.current_due) - amtVal) };
           }
           return f;
         });
@@ -415,7 +421,7 @@ export const useAppStore = create((set, get) => ({
         const updatedSales = [sale, ...get().sales];
         const updatedCustomers = get().customers.map(c => {
           if (c.customer_id === data.customer_id) {
-            return { ...c, current_due: (c.current_due || 0) + sale.due_amount };
+            return { ...c, current_due: getSafeDue(c.current_due) + sale.due_amount };
           }
           return c;
         });
@@ -450,7 +456,7 @@ export const useAppStore = create((set, get) => ({
         set({
           customers: get().customers.map(c => {
             if (c.customer_id === customerId) {
-              return { ...c, current_due: Math.max(0, (c.current_due || 0) - amt) };
+              return { ...c, current_due: Math.max(0, getSafeDue(c.current_due) - amt) };
             }
             return c;
           })

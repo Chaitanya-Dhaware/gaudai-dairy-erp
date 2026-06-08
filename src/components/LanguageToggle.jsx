@@ -14,7 +14,7 @@ export function LanguageToggle() {
   return (
     <button 
       onClick={toggle} 
-      className="flex items-center space-x-1.5 px-3 py-1.5 border border-primary/10 hover:border-primary/30 text-primary text-sm font-medium rounded-full bg-primary/5 hover:bg-primary/10 transition-all duration-200"
+      className="flex items-center space-x-1 sm:space-x-1.5 px-2 py-1 sm:px-3 sm:py-1.5 border border-primary/10 hover:border-primary/30 text-primary text-xs sm:text-sm font-medium rounded-full bg-primary/5 hover:bg-primary/10 transition-all duration-200"
       style={{ fontFamily: isMarathi ? 'Noto Sans Devanagari, sans-serif' : 'DM Sans, sans-serif' }}
       title={isMarathi ? 'Switch to English' : 'मराठीमध्ये बदला'}
       id="language-toggle-btn"

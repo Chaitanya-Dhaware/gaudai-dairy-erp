@@ -44,7 +44,7 @@ export function CollectionWorkspace() {
       <div className="flex border-b border-black/[0.08] overflow-x-auto whitespace-nowrap scrollbar-none gap-2">
         <button
           onClick={() => setActiveTab('milk-entry')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'milk-entry' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -52,7 +52,7 @@ export function CollectionWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('farmer-reg')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'farmer-reg' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -60,7 +60,7 @@ export function CollectionWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('payment-tracking')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'payment-tracking' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -68,7 +68,7 @@ export function CollectionWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('summary')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'summary' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -76,7 +76,7 @@ export function CollectionWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('daily-transactions')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'daily-transactions' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -452,7 +452,7 @@ function MilkCollectionEntry({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-textSecondary mb-2">{t('collection.quantity')} *</label>
               <input

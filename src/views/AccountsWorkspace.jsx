@@ -64,7 +64,7 @@ export function AccountsWorkspace() {
       <div className="flex border-b border-black/[0.08] overflow-x-auto whitespace-nowrap scrollbar-none gap-2">
         <button
           onClick={() => setActiveTab('financials')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'financials' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -72,7 +72,7 @@ export function AccountsWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('charts')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'charts' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -85,7 +85,7 @@ export function AccountsWorkspace() {
               loadAIInsights();
             }
           }}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'insights' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >
@@ -93,7 +93,7 @@ export function AccountsWorkspace() {
         </button>
         <button
           onClick={() => setActiveTab('cashflow')}
-          className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+          className={`py-2.5 px-2.5 sm:py-3 sm:px-4 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
             activeTab === 'cashflow' ? 'border-primary text-primary' : 'border-transparent text-textSecondary hover:text-textPrimary'
           }`}
         >

@@ -1769,7 +1769,8 @@ function recordPayment(customerId, amount) {
   var custData = custSheet.getDataRange().getValues();
   for (var i = 1; i < custData.length; i++) {
     if (custData[i][0] === customerId) {
-      var currentDue = Math.max(0, parseFloat(custData[i][5] || 0) - parseFloat(amount));
+      var amtVal = parseSafeFloat(amount);
+      var currentDue = Math.max(0, parseSafeFloat(custData[i][5]) - amtVal);
       custSheet.getRange(i + 1, 6).setValue(currentDue);
       
       // Log payment history
@@ -1779,7 +1780,7 @@ function recordPayment(customerId, amount) {
         "PAY" + Date.now(),
         customerId,
         customerName,
-        amount,
+        amtVal,
         new Date().toISOString().split('T')[0],
         new Date().toISOString()
       ]);
