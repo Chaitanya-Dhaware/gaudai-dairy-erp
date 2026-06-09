@@ -19,7 +19,7 @@ export function Login() {
 
   // Pre-configured staff profiles for rapid testing & evaluation
   const demoUsers = [
-    { name: 'Ravi Patil (Admin)', role: 'admin', email: 'admin@gaudai.com', password: 'password123' },
+    { name: 'Chaitanya Dhaware (Admin)', role: 'admin', email: 'admin@gaudai.com', password: 'password123' },
     { name: 'Shankar Rao (Staff)', role: 'staff', email: 'staff@gaudai.com', password: 'password123' },
     { name: 'Sunita Deshpande (Accountant)', role: 'accountant', email: 'accountant@gaudai.com', password: 'password123' }
   ];

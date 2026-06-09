@@ -31,8 +31,8 @@ export function Sidebar() {
   return (
     <aside className="hidden lg:flex flex-col w-60 h-screen bg-white border-r border-black/[0.08] fixed left-0 top-0 z-30">
       {/* Brand Header */}
-      <div className="flex items-center space-x-3 px-5 py-5 border-b border-black/[0.08]">
-        <div className="w-28 flex-shrink-0">
+      <div className="flex items-center justify-center px-5 py-4 border-b border-black/[0.08]">
+        <div className="w-24 flex-shrink-0">
           <img src={gaudaiLogo} alt="गौदाई" className="w-full h-auto object-contain" />
         </div>
       </div>

@@ -146,7 +146,7 @@ export function Settings() {
 
   // User management mockup (state managed locally or in cache)
   const [staffList, setStaffList] = useState([
-    { uid: 'adm1', name: 'Ravi Patil', role: 'admin', active: true, email: 'admin@gaudai.com' },
+    { uid: 'adm1', name: 'Chaitanya Dhaware', role: 'admin', active: true, email: 'admin@gaudai.com' },
     { uid: 'stf1', name: 'Shankar Rao', role: 'staff', active: true, email: 'staff@gaudai.com' },
     { uid: 'acc1', name: 'Sunita Deshpande', role: 'accountant', active: true, email: 'accountant@gaudai.com' }
   ]);

@@ -732,7 +732,16 @@ onAuthStateChanged(auth, async (firebaseUser) => {
       const docRef = doc(db, 'users', firebaseUser.uid);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
-        store.setUser(docSnap.data());
+        const userData = docSnap.data();
+        if (userData && userData.name === 'Ravi Patil') {
+          userData.name = 'Chaitanya Dhaware';
+          try {
+            await setDoc(docRef, { name: 'Chaitanya Dhaware' }, { merge: true });
+          } catch (err) {
+            console.error('Failed to auto-update admin name in Firestore:', err);
+          }
+        }
+        store.setUser(userData);
       } else {
         // Fallback or Auto-seed for demo testing
         const fallbackUser = {
