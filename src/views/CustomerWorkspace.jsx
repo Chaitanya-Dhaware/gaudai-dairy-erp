@@ -12,6 +12,8 @@ export function CustomerWorkspace() {
     products,
     sales,
     addCustomer,
+    updateCustomer,
+    deleteCustomer,
     addProduct,
     updateProduct,
     addSale,
@@ -101,6 +103,8 @@ export function CustomerWorkspace() {
           <CustomerRegistration
             customers={customers}
             addCustomer={addCustomer}
+            updateCustomer={updateCustomer}
+            deleteCustomer={deleteCustomer}
             loading={loading}
             t={t}
             isMarathi={isMarathi}
@@ -236,6 +240,8 @@ export function CustomerWorkspace() {
 function CustomerRegistration({
   customers,
   addCustomer,
+  updateCustomer,
+  deleteCustomer,
   loading,
   t,
   isMarathi,
@@ -246,6 +252,7 @@ function CustomerRegistration({
   const [mobile, setMobile] = useState('');
   const [address, setAddress] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingCustomerId, setEditingCustomerId] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -257,12 +264,50 @@ function CustomerRegistration({
       toast.error(isMarathi ? 'मोबाईल नंबर १० अंकी असावा' : 'Mobile must be 10 digits');
       return;
     }
-    const success = await addCustomer({ shop_name: shopName, owner_name: ownerName, mobile, address });
-    if (success) {
-      setShopName('');
-      setOwnerName('');
-      setMobile('');
-      setAddress('');
+
+    if (editingCustomerId) {
+      const success = await updateCustomer(editingCustomerId, {
+        shop_name: shopName,
+        owner_name: ownerName,
+        mobile,
+        address
+      });
+      if (success) {
+        handleCancelEdit();
+      }
+    } else {
+      const success = await addCustomer({ shop_name: shopName, owner_name: ownerName, mobile, address });
+      if (success) {
+        setShopName('');
+        setOwnerName('');
+        setMobile('');
+        setAddress('');
+      }
+    }
+  };
+
+  const handleEditClick = (c) => {
+    setEditingCustomerId(c.customer_id);
+    setShopName(c.shop_name);
+    setOwnerName(c.owner_name);
+    setMobile(c.mobile);
+    setAddress(c.address || '');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCustomerId(null);
+    setShopName('');
+    setOwnerName('');
+    setMobile('');
+    setAddress('');
+  };
+
+  const handleDeleteClick = async (customerId) => {
+    const confirmMsg = isMarathi 
+      ? 'तुम्हाला खात्री आहे की तुम्ही हा ग्राहक हटवू इच्छिता?' 
+      : 'Are you sure you want to delete this customer?';
+    if (window.confirm(confirmMsg)) {
+      await deleteCustomer(customerId);
     }
   };
 
@@ -276,7 +321,7 @@ function CustomerRegistration({
       <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-subtle">
         <h3 className="text-lg font-bold font-head text-primary mb-4 flex items-center space-x-2">
           <UserPlus className="w-5 h-5" />
-          <span>{t('customer.register')}</span>
+          <span>{editingCustomerId ? (isMarathi ? 'ग्राहक माहिती दुरुस्त करा' : 'Edit Customer Details') : t('customer.register')}</span>
         </h3>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           <div>
@@ -322,13 +367,22 @@ function CustomerRegistration({
               className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary"
             />
           </div>
-          <div className="md:col-span-4 flex justify-end">
+          <div className="md:col-span-4 flex justify-end space-x-2">
+            {editingCustomerId && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="px-5 py-2.5 border border-black/[0.08] hover:bg-black/[0.02] text-sm font-semibold rounded-xl transition-all cursor-pointer text-textSecondary"
+              >
+                {isMarathi ? 'रद्द करा' : 'Cancel'}
+              </button>
+            )}
             <button
               type="submit"
               disabled={loading}
               className="px-5 py-2.5 bg-primary hover:bg-primary-light text-white text-sm font-semibold rounded-xl transition-all cursor-pointer"
             >
-              {t('customer.register')}
+              {editingCustomerId ? (isMarathi ? 'बदल जतन करा' : 'Save Changes') : t('customer.register')}
             </button>
           </div>
         </form>
@@ -361,6 +415,7 @@ function CustomerRegistration({
                 <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{t('customer.ownerName')}</th>
                 <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{t('label.mobile')}</th>
                 <th className="py-3 px-4 font-semibold text-textSecondary uppercase">{t('customer.currentDue')}</th>
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase text-center">{isMarathi ? 'कृती' : 'Actions'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/[0.04]">
@@ -379,6 +434,22 @@ function CustomerRegistration({
                       hasRedDue ? 'text-danger' : (hasAmberDue ? 'text-accent' : 'text-textSecondary')
                     }`}>
                       {formatCurrency(c.current_due)}
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex justify-center space-x-3">
+                        <button
+                          onClick={() => handleEditClick(c)}
+                          className="text-primary hover:underline font-semibold cursor-pointer"
+                        >
+                          {isMarathi ? 'दुरुस्त करा' : 'Edit'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(c.customer_id)}
+                          className="text-danger hover:underline font-semibold cursor-pointer"
+                        >
+                          {isMarathi ? 'हटवा' : 'Delete'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

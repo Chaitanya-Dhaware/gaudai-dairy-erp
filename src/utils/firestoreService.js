@@ -526,6 +526,50 @@ export async function addCustomer(data) {
 }
 
 /**
+ * Update a customer in Firestore.
+ */
+export async function updateCustomer(customerId, data) {
+  if (IS_MOCK_MODE) {
+    const customers = JSON.parse(localStorage.getItem('GAUDAI_CUSTOMERS') || '[]');
+    const idx = customers.findIndex(c => c.customer_id === customerId);
+    if (idx !== -1) {
+      customers[idx] = { ...customers[idx], ...data };
+      localStorage.setItem('GAUDAI_CUSTOMERS', JSON.stringify(customers));
+      return { success: true, message: 'Customer updated', data: customers[idx] };
+    }
+    return { success: false, message: 'Customer not found' };
+  }
+  try {
+    const ref = doc(db, 'customers', customerId);
+    await updateDoc(ref, data);
+    return { success: true, message: 'Customer updated' };
+  } catch (err) {
+    console.error('updateCustomer error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Delete a customer from Firestore.
+ */
+export async function deleteCustomer(customerId) {
+  if (IS_MOCK_MODE) {
+    const customers = JSON.parse(localStorage.getItem('GAUDAI_CUSTOMERS') || '[]');
+    const filtered = customers.filter(c => c.customer_id !== customerId);
+    localStorage.setItem('GAUDAI_CUSTOMERS', JSON.stringify(filtered));
+    return { success: true, message: 'Customer deleted' };
+  }
+  try {
+    await deleteDoc(doc(db, 'customers', customerId));
+    return { success: true, message: 'Customer deleted' };
+  } catch (err) {
+    console.error('deleteCustomer error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+
+/**
  * Add a product to Firestore.
  */
 export async function addProduct(data) {

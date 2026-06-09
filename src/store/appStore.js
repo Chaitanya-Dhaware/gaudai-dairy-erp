@@ -367,6 +367,51 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  updateCustomer: async (customerId, data) => {
+    set({ loading: true });
+    try {
+      const res = await FS.updateCustomer(customerId, data);
+      if (res.success) {
+        toast.success('ग्राहक माहिती बदलली / Customer updated!');
+        set({
+          customers: get().customers.map(c =>
+            c.customer_id === customerId ? { ...c, ...data } : c
+          )
+        });
+        invalidateCache('customers');
+        enqueueSyncJob('updateCustomer', { customer_id: customerId, ...data }, `upd_cust_${customerId}`);
+        return true;
+      }
+      return false;
+    } catch {
+      toast.error('माहिती बदल जतन झाला नाही / Update error');
+      return false;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  deleteCustomer: async (customerId) => {
+    set({ loading: true });
+    try {
+      const res = await FS.deleteCustomer(customerId);
+      if (res.success) {
+        const isMarathi = localStorage.getItem('i18nextLng') === 'mr';
+        toast.success(isMarathi ? 'ग्राहक हटवला!' : 'Customer deleted!');
+        set({ customers: get().customers.filter(c => c.customer_id !== customerId) });
+        invalidateCache('customers');
+        enqueueSyncJob('deleteCustomer', { customer_id: customerId }, `del_cust_${customerId}`);
+        return true;
+      }
+      return false;
+    } catch {
+      toast.error('ग्राहक हटवण्यास अडचण / Delete error');
+      return false;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
   addProduct: async (data) => {
     set({ loading: true });
     try {
