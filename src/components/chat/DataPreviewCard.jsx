@@ -66,7 +66,7 @@ export default function DataPreviewCard({ action }) {
           {getDocTypeIcon(data?.document_type)} {data?.document_type || 'DOCUMENT'} SCAN
         </span>
         <span style={{ fontSize: '11px', color: '#6B7280', marginLeft: 'auto' }}>
-          {validEntries.length}/{entries.length} matched
+          {validEntries.length}/{entries.length} {(data?.document_type === 'CUSTOMER_LIST' || data?.document_type === 'CUSTOMERS' || data?.document_type === 'FARMER_LIST' || data?.document_type === 'FARMERS') ? 'valid' : 'matched'}
         </span>
       </div>
 
@@ -89,6 +89,32 @@ export default function DataPreviewCard({ action }) {
                   <th>Category</th>
                 </>
               )}
+              {data?.document_type === 'SALES' && (
+                <>
+                  <th>Product</th>
+                  <th>Qty</th>
+                  <th>Total</th>
+                </>
+              )}
+              {data?.document_type === 'PAYMENT' && (
+                <>
+                  <th>Amount</th>
+                </>
+              )}
+              {(data?.document_type === 'CUSTOMER_LIST' || data?.document_type === 'CUSTOMERS') && (
+                <>
+                  <th>Owner</th>
+                  <th>Mobile</th>
+                  <th>Address</th>
+                </>
+              )}
+              {(data?.document_type === 'FARMER_LIST' || data?.document_type === 'FARMERS') && (
+                <>
+                  <th>Mobile</th>
+                  <th>Milk Type</th>
+                  <th>Address</th>
+                </>
+              )}
               <th>Status</th>
             </tr>
           </thead>
@@ -96,7 +122,7 @@ export default function DataPreviewCard({ action }) {
             {entries.map((entry, i) => (
               <tr key={i} className={entry.validation?.valid ? '' : 'invalid'}>
                 <td>{i + 1}</td>
-                <td>{entry.matched_name || entry.name}</td>
+                <td>{entry.matched_name || entry.name || (data?.document_type === 'CUSTOMER_LIST' || data?.document_type === 'CUSTOMERS' ? entry.fields?.shop_name : '')}</td>
                 {data?.document_type === 'COLLECTION' && (
                   <>
                     <td>{entry.fields?.quantity || '—'}</td>
@@ -108,6 +134,32 @@ export default function DataPreviewCard({ action }) {
                   <>
                     <td>₹{entry.fields?.amount || '—'}</td>
                     <td>{entry.fields?.category || 'Other'}</td>
+                  </>
+                )}
+                {data?.document_type === 'SALES' && (
+                  <>
+                    <td>{entry.fields?.product || '—'}</td>
+                    <td>{entry.fields?.quantity || '—'}</td>
+                    <td>₹{entry.fields?.total || entry.fields?.amount || '—'}</td>
+                  </>
+                )}
+                {data?.document_type === 'PAYMENT' && (
+                  <>
+                    <td>₹{entry.fields?.amount || '—'}</td>
+                  </>
+                )}
+                {(data?.document_type === 'CUSTOMER_LIST' || data?.document_type === 'CUSTOMERS') && (
+                  <>
+                    <td>{entry.fields?.owner_name || '—'}</td>
+                    <td>{entry.fields?.mobile || '—'}</td>
+                    <td>{entry.fields?.address || '—'}</td>
+                  </>
+                )}
+                {(data?.document_type === 'FARMER_LIST' || data?.document_type === 'FARMERS') && (
+                  <>
+                    <td>{entry.fields?.mobile || '—'}</td>
+                    <td>{entry.fields?.milk_type || 'Cow'}</td>
+                    <td>{entry.fields?.address || '—'}</td>
                   </>
                 )}
                 <td>
@@ -131,7 +183,7 @@ export default function DataPreviewCard({ action }) {
       {invalidEntries.length > 0 && (
         <p style={{ fontSize: '11px', color: '#DC2626', margin: '8px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
           <AlertTriangle size={12} />
-          {invalidEntries.length} entries could not be matched and will be skipped.
+          {invalidEntries.length} entries could not be validated and will be skipped.
         </p>
       )}
 
@@ -264,10 +316,20 @@ function getBadgeClass(type) {
   if (type === 'ADD_COLLECTION' || type === 'COLLECTION') return 'collection';
   if (type === 'ADD_SALE' || type === 'SALES') return 'sales';
   if (type === 'ADD_EXPENSE' || type === 'EXPENSE') return 'expense';
+  if (type === 'CUSTOMER_LIST' || type === 'CUSTOMERS' || type === 'FARMER_LIST' || type === 'FARMERS') return 'collection';
   return 'payment';
 }
 
 function getDocTypeIcon(docType) {
-  const icons = { COLLECTION: '🥛', SALES: '🛒', EXPENSE: '💰', PAYMENT: '💳' };
+  const icons = {
+    COLLECTION: '🥛',
+    SALES: '🛒',
+    EXPENSE: '💰',
+    PAYMENT: '💳',
+    CUSTOMER_LIST: '🏪',
+    CUSTOMERS: '🏪',
+    FARMER_LIST: '👨‍🌾',
+    FARMERS: '👨‍🌾'
+  };
   return icons[docType] || '📄';
 }

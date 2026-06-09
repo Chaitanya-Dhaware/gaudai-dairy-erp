@@ -222,3 +222,30 @@ ${dataStr}`;
     }
   }
 }
+
+/**
+ * Process Excel spreadsheet JSON data with a system/extraction prompt.
+ * 
+ * @param {string} prompt - Instruction prompt for structured mapping
+ * @param {string} excelJsonStr - Stringified JSON representing sheet rows
+ * @returns {Promise<string>} Gemini response text with extracted records
+ */
+export async function processExcelWithGemini(prompt, excelJsonStr) {
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          { text: excelJsonStr }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.1,
+      topP: 0.9,
+      maxOutputTokens: 8192
+    }
+  };
+
+  return callGeminiWithFallback(body);
+}

@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { processConversation, processOCRImage, executeAction, generateLocalReport } from '../utils/gaudaiAI';
+import { processConversation, processOCRImage, processExcelFile, executeAction, generateLocalReport } from '../utils/gaudaiAI';
 import { useAppStore } from './appStore';
 
 /**
@@ -143,17 +143,22 @@ export const useChatStore = create((set, get) => ({
   /**
    * Send an image for OCR processing.
    */
-  sendImage: async (file) => {
+  sendImage: async (file, task = '') => {
     if (!file || get().isProcessing) return;
 
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv') ||
+      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      file.type === 'application/vnd.ms-excel' ||
+      file.type === 'text/csv';
+
     // Create preview message
-    const previewUrl = URL.createObjectURL(file);
+    const previewUrl = isExcel ? null : URL.createObjectURL(file);
     const userMsg = {
       id: msgId(),
       role: 'user',
-      content: `📷 Uploaded: ${file.name}`,
+      content: `${isExcel ? '📊' : '📷'} Uploaded: ${file.name}${task ? `\n\nTask: ${task}` : ''}`,
       timestamp: Date.now(),
-      type: 'image',
+      type: isExcel ? 'file' : 'image',
       imageUrl: previewUrl
     };
 
@@ -164,12 +169,17 @@ export const useChatStore = create((set, get) => ({
     }));
 
     try {
-      // Convert file to base64
-      const base64 = await fileToBase64(file);
-      const mimeType = file.type || 'image/jpeg';
-
       const snapshot = getStoreSnapshot();
-      const result = await processOCRImage(base64, mimeType, snapshot);
+      let result;
+
+      if (isExcel) {
+        result = await processExcelFile(file, snapshot, task);
+      } else {
+        // Convert file to base64 for OCR
+        const base64 = await fileToBase64(file);
+        const mimeType = file.type || 'image/jpeg';
+        result = await processOCRImage(base64, mimeType, snapshot, task);
+      }
 
       const aiMsg = {
         id: msgId(),
@@ -188,11 +198,11 @@ export const useChatStore = create((set, get) => ({
         hasUnread: !state.isOpen
       }));
     } catch (error) {
-      console.error('OCR processing error:', error);
+      console.error('File processing error:', error);
       const errorMsg = {
         id: msgId(),
         role: 'assistant',
-        content: `⚠️ Failed to process image: ${error.message}. Please try with a clearer image.`,
+        content: `⚠️ Failed to process file: ${error.message}. Please try again.`,
         timestamp: Date.now(),
         type: 'error'
       };

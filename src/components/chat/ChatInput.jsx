@@ -46,9 +46,17 @@ export default function ChatInput() {
     if (!file) return;
 
     // Validate file type
-    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
-    if (!allowed.includes(file.type)) {
-      alert('Please upload JPG, PNG, WebP, or PDF files only.');
+    const allowed = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv'
+    ];
+    const ext = file.name.split('.').pop().toLowerCase();
+    const isAllowedExt = ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'xlsx', 'xls', 'csv'].includes(ext);
+
+    if (!allowed.includes(file.type) && !isAllowedExt) {
+      alert('Please upload JPG, PNG, WebP, PDF, XLSX, XLS, or CSV files only.');
       return;
     }
 
@@ -75,7 +83,7 @@ export default function ChatInput() {
     if (isProcessing) return;
 
     if (selectedFile) {
-      sendImage(selectedFile);
+      sendImage(selectedFile, text);
       clearFile();
       setText('');
       return;
@@ -170,7 +178,7 @@ export default function ChatInput() {
               alignItems: 'center', justifyContent: 'center',
               fontSize: 18
             }}>
-              📄
+              {selectedFile.name.endsWith('.xlsx') || selectedFile.name.endsWith('.xls') || selectedFile.name.endsWith('.csv') ? '📊' : '📄'}
             </div>
           )}
           <div className="file-info">
@@ -198,7 +206,7 @@ export default function ChatInput() {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
+          accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf,.xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
           style={{ display: 'none' }}
           onChange={handleFileSelect}
         />
