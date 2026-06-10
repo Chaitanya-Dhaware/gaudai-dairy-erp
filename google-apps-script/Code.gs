@@ -385,7 +385,10 @@ function doPost(e) {
         result = addProduct(requestData);
         break;
       case 'updateProduct':
-        result = updateProduct(requestData.product_id, requestData.data);
+        result = updateProduct(requestData.product_id, requestData.data, requestData.new_product_id);
+        break;
+      case 'deleteProduct':
+        result = deleteProduct(requestData.product_id);
         break;
       case 'addSale':
         result = addSale(requestData);
@@ -1689,18 +1692,41 @@ function addProduct(data) {
   return { success: true, data: { product_id: productId, product_name: data.product_name, category: data.category, unit_price: data.unit_price, status: data.status || "Active" } };
 }
 
-function updateProduct(productId, data) {
+function updateProduct(productId, data, newProductId) {
   var ss = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
   var sheet = ss.getSheetByName("Products");
   var val = sheet.getDataRange().getValues();
   for (var i = 1; i < val.length; i++) {
     if (val[i][0] === productId) {
+      if (newProductId && newProductId !== productId) {
+        sheet.getRange(i + 1, 1).setValue(newProductId);
+      }
+      if (data.hasOwnProperty('product_name')) {
+        sheet.getRange(i + 1, 2).setValue(data.product_name);
+      }
+      if (data.hasOwnProperty('category')) {
+        sheet.getRange(i + 1, 3).setValue(data.category);
+      }
       if (data.hasOwnProperty('unit_price')) {
         sheet.getRange(i + 1, 4).setValue(data.unit_price);
       }
       if (data.hasOwnProperty('status')) {
         sheet.getRange(i + 1, 5).setValue(data.status);
       }
+      sheet.getRange(i + 1, 6).setValue(new Date().toISOString());
+      break;
+    }
+  }
+  return { success: true };
+}
+
+function deleteProduct(productId) {
+  var ss = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
+  var sheet = ss.getSheetByName("Products");
+  var val = sheet.getDataRange().getValues();
+  for (var i = 1; i < val.length; i++) {
+    if (val[i][0] === productId) {
+      sheet.deleteRow(i + 1);
       break;
     }
   }

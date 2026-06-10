@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
-import { Search, UserPlus, ShoppingCart, Trash2, CheckCircle2, Send } from 'lucide-react';
+import { Search, UserPlus, ShoppingCart, Trash2, CheckCircle2, Send, Edit } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function CustomerWorkspace() {
@@ -16,6 +16,7 @@ export function CustomerWorkspace() {
     deleteCustomer,
     addProduct,
     updateProduct,
+    deleteProduct,
     addSale,
     recordCustomerPayment,
     loading
@@ -116,6 +117,7 @@ export function CustomerWorkspace() {
             products={products}
             addProduct={addProduct}
             updateProduct={updateProduct}
+            deleteProduct={deleteProduct}
             t={t}
             isMarathi={isMarathi}
             formatCurrency={formatCurrency}
@@ -463,10 +465,12 @@ function CustomerRegistration({
 }
 
 // --- SUB-SCREEN 2B: PRODUCT MANAGEMENT (Admin only) ---
+// --- SUB-SCREEN 2B: PRODUCT MANAGEMENT (Admin only) ---
 function ProductManagement({
   products,
   addProduct,
   updateProduct,
+  deleteProduct,
   t,
   isMarathi,
   formatCurrency
@@ -474,72 +478,160 @@ function ProductManagement({
   const [name, setName] = useState('');
   const [category, setCategory] = useState('Milk');
   const [price, setPrice] = useState('');
-  const [editPriceId, setEditPriceId] = useState(null);
-  const [newPriceVal, setNewPriceVal] = useState('');
+  const [productIdInput, setProductIdInput] = useState('');
+  const [status, setStatus] = useState('Active');
+  const [editingProductId, setEditingProductId] = useState(null);
 
-  const handleAdd = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name || !price) return;
-    const success = await addProduct({ product_name: name, category, unit_price: parseFloat(price) });
-    if (success) {
-      setName('');
-      setPrice('');
-      setCategory('Milk');
+    if (!name || !price) {
+      toast.error(isMarathi ? 'कृपया आवश्यक शेतात भरा' : 'Please fill all required fields');
+      return;
+    }
+    const unitPriceNum = parseFloat(price);
+    if (isNaN(unitPriceNum) || unitPriceNum <= 0) {
+      toast.error(isMarathi ? 'कृपया वैध किंमत प्रविष्ट करा' : 'Please enter a valid price');
+      return;
+    }
+
+    if (editingProductId) {
+      // Edit mode
+      const success = await updateProduct(
+        editingProductId, 
+        { product_name: name, category, unit_price: unitPriceNum, status }, 
+        productIdInput.trim() || editingProductId
+      );
+      if (success) {
+        handleCancel();
+      }
+    } else {
+      // Add mode
+      const success = await addProduct({ 
+        product_id: productIdInput.trim() || undefined, 
+        product_name: name, 
+        category, 
+        unit_price: unitPriceNum 
+      });
+      if (success) {
+        handleCancel();
+      }
     }
   };
 
-  const handlePriceEdit = async (prodId) => {
-    const success = await updateProduct(prodId, { unit_price: parseFloat(newPriceVal) });
-    if (success) {
-      setEditPriceId(null);
-      setNewPriceVal('');
+  const handleEditClick = (p) => {
+    setEditingProductId(p.product_id);
+    setProductIdInput(p.product_id);
+    setName(p.product_name);
+    setCategory(p.category || 'Milk');
+    setPrice(String(p.unit_price));
+    setStatus(p.status || 'Active');
+  };
+
+  const handleCancel = () => {
+    setEditingProductId(null);
+    setProductIdInput('');
+    setName('');
+    setCategory('Milk');
+    setPrice('');
+    setStatus('Active');
+  };
+
+  const handleDeleteClick = async (p) => {
+    const confirmMsg = isMarathi 
+      ? `तुम्हाला खात्री आहे की तुम्ही '${p.product_name}' हे उत्पादन हटवू इच्छिता?` 
+      : `Are you sure you want to delete product '${p.product_name}'?`;
+    if (window.confirm(confirmMsg)) {
+      await deleteProduct(p.product_id);
     }
   };
 
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-subtle">
-        <h3 className="text-lg font-bold font-head text-primary mb-4">{isMarathi ? 'नवीन उत्पादन जोडा' : 'Add New Product'}</h3>
-        <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-          <div>
-            <label className="block text-xs font-semibold text-textSecondary mb-2">{isMarathi ? 'उत्पादनाचे नाव' : 'Product Name'}</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Product SKU Name"
-              className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none"
-              required
-            />
+        <h3 className="text-lg font-bold font-head text-primary mb-4 flex items-center space-x-2">
+          <Edit className="w-5 h-5" />
+          <span>{editingProductId ? (isMarathi ? 'उत्पादन तपशील दुरुस्त करा' : 'Edit Product Details') : (isMarathi ? 'नवीन उत्पादन जोडा' : 'Add New Product')}</span>
+        </h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div>
+              <label className="block text-xs font-semibold text-textSecondary mb-2">
+                {isMarathi ? 'उत्पादन आयडी (Product ID)' : 'Product ID'} {!editingProductId && (isMarathi ? '(ऐच्छिक)' : '(Optional)')}
+              </label>
+              <input
+                type="text"
+                value={productIdInput}
+                onChange={(e) => setProductIdInput(e.target.value)}
+                placeholder={editingProductId ? "Product ID" : "Auto-generated"}
+                className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-textSecondary mb-2">{isMarathi ? 'उत्पादनाचे नाव' : 'Product Name'} *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Product SKU Name"
+                className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-textSecondary mb-2">{isMarathi ? 'श्रेणी' : 'Category'}</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary"
+              >
+                <option value="Milk">Milk</option>
+                <option value="Curd">Curd</option>
+                <option value="Lassi">Lassi</option>
+                <option value="Shrikhand">Shrikhand</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-textSecondary mb-2">{t('customer.unitPrice')} (₹) *</label>
+              <input
+                type="number"
+                step="0.01"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="Unit price (₹)"
+                className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary font-mono"
+                required
+              />
+            </div>
+            {editingProductId && (
+              <div>
+                <label className="block text-xs font-semibold text-textSecondary mb-2">{isMarathi ? 'स्थिती' : 'Status'}</label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none focus:border-primary"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </div>
+            )}
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-textSecondary mb-2">{isMarathi ? 'श्रेणी' : 'Category'}</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none"
+          <div className="flex justify-end space-x-2 pt-2">
+            {editingProductId && (
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="px-5 py-2.5 border border-black/[0.08] hover:bg-black/[0.02] text-sm font-semibold rounded-xl text-textSecondary cursor-pointer"
+              >
+                {isMarathi ? 'रद्द करा' : 'Cancel'}
+              </button>
+            )}
+            <button
+              type="submit"
+              className="px-5 py-2.5 bg-primary hover:bg-primary-light text-white text-sm font-semibold rounded-xl cursor-pointer"
             >
-              <option value="Milk">Milk</option>
-              <option value="Curd">Curd</option>
-              <option value="Lassi">Lassi</option>
-              <option value="Shrikhand">Shrikhand</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-textSecondary mb-2">{t('customer.unitPrice')} (₹)</label>
-            <input
-              type="number"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="Unit price (₹)"
-              className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background focus:outline-none font-mono"
-              required
-            />
-          </div>
-          <div>
-            <button type="submit" className="w-full py-2.5 bg-primary text-white text-sm font-semibold rounded-xl">
-              {isMarathi ? 'उत्पादन जोडा' : 'Add Product'}
+              {editingProductId ? (isMarathi ? 'बदल जतन करा' : 'Save Changes') : (isMarathi ? 'उत्पादन जोडा' : 'Add Product')}
             </button>
           </div>
         </form>
@@ -555,7 +647,7 @@ function ProductManagement({
                 <th className="py-3 px-4 font-semibold text-textSecondary uppercase">Category</th>
                 <th className="py-3 px-4 font-semibold text-textSecondary uppercase">Price</th>
                 <th className="py-3 px-4 font-semibold text-textSecondary uppercase">Status</th>
-                <th className="py-3 px-4 font-semibold text-textSecondary uppercase">Actions</th>
+                <th className="py-3 px-4 font-semibold text-textSecondary uppercase text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/[0.04]">
@@ -565,49 +657,34 @@ function ProductManagement({
                   <td className="py-3.5 px-4 font-bold text-textPrimary">{p.product_name}</td>
                   <td className="py-3.5 px-4">{p.category}</td>
                   <td className="py-3.5 px-4 font-mono font-semibold">
-                    {editPriceId === p.product_id ? (
-                      <input
-                        type="number"
-                        value={newPriceVal}
-                        onChange={(e) => setNewPriceVal(e.target.value)}
-                        className="w-20 px-2 py-1 border rounded font-mono text-xs"
-                      />
-                    ) : (
-                      formatCurrency(p.unit_price)
-                    )}
+                    {formatCurrency(p.unit_price)}
                   </td>
                   <td className="py-3.5 px-4">
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-primary/5 text-primary border border-primary/10">
-                      {p.status}
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold border ${
+                      p.status === 'Inactive' 
+                        ? 'bg-danger/5 text-danger border-danger/10' 
+                        : 'bg-primary/5 text-primary border-primary/10'
+                    }`}>
+                      {p.status || 'Active'}
                     </span>
                   </td>
                   <td className="py-3.5 px-4">
-                    {editPriceId === p.product_id ? (
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handlePriceEdit(p.product_id)}
-                          className="text-xs bg-primary text-white px-2 py-1 rounded"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => setEditPriceId(null)}
-                          className="text-xs border px-2 py-1 rounded"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
+                    <div className="flex justify-center space-x-3">
                       <button
-                        onClick={() => {
-                          setEditPriceId(p.product_id);
-                          setNewPriceVal(p.unit_price);
-                        }}
-                        className="text-primary hover:underline font-semibold"
+                        onClick={() => handleEditClick(p)}
+                        className="text-primary hover:underline font-semibold cursor-pointer flex items-center"
                       >
-                        Edit Price
+                        <Edit className="w-3.5 h-3.5 mr-1" />
+                        <span>{isMarathi ? 'दुरुस्त करा' : 'Edit'}</span>
                       </button>
-                    )}
+                      <button
+                        onClick={() => handleDeleteClick(p)}
+                        className="text-danger hover:underline font-semibold cursor-pointer flex items-center"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-1" />
+                        <span>{isMarathi ? 'हटवा' : 'Delete'}</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

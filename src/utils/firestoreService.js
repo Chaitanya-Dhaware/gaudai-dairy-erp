@@ -625,14 +625,16 @@ export async function addProduct(data) {
 /**
  * Update a product's price in Firestore.
  */
-export async function updateProduct(productId, data) {
+export async function updateProduct(productId, data, newProductId) {
   if (IS_MOCK_MODE) {
     const products = JSON.parse(localStorage.getItem('GAUDAI_PRODUCTS') || '[]');
     const prodIdx = products.findIndex(p => p.product_id === productId);
     if (prodIdx !== -1) {
+      const updatedId = newProductId || productId;
       products[prodIdx] = { 
         ...products[prodIdx], 
-        unit_price: parseFloat(data.unit_price), 
+        ...data,
+        product_id: updatedId,
         updated_at: new Date().toISOString() 
       };
       localStorage.setItem('GAUDAI_PRODUCTS', JSON.stringify(products));
@@ -641,14 +643,50 @@ export async function updateProduct(productId, data) {
     return { success: false, message: 'Product not found' };
   }
   try {
-    const prodRef = doc(db, 'products', productId);
-    await updateDoc(prodRef, {
-      unit_price: parseFloat(data.unit_price),
-      updated_at: new Date().toISOString()
-    });
+    if (newProductId && newProductId !== productId) {
+      const oldDocRef = doc(db, 'products', productId);
+      const newDocRef = doc(db, 'products', newProductId);
+      const oldSnap = await getDoc(oldDocRef);
+      const oldData = oldSnap.exists() ? oldSnap.data() : {};
+      
+      const updatedProduct = {
+        ...oldData,
+        ...data,
+        product_id: newProductId,
+        updated_at: new Date().toISOString()
+      };
+      
+      await setDoc(newDocRef, updatedProduct);
+      await deleteDoc(oldDocRef);
+    } else {
+      const prodRef = doc(db, 'products', productId);
+      await updateDoc(prodRef, {
+        ...data,
+        updated_at: new Date().toISOString()
+      });
+    }
     return { success: true, message: 'Product updated' };
   } catch (err) {
     console.error('updateProduct error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Delete a product from Firestore.
+ */
+export async function deleteProduct(productId) {
+  if (IS_MOCK_MODE) {
+    const products = JSON.parse(localStorage.getItem('GAUDAI_PRODUCTS') || '[]');
+    const filtered = products.filter(p => p.product_id !== productId);
+    localStorage.setItem('GAUDAI_PRODUCTS', JSON.stringify(filtered));
+    return { success: true, message: 'Product deleted' };
+  }
+  try {
+    await deleteDoc(doc(db, 'products', productId));
+    return { success: true, message: 'Product deleted' };
+  } catch (err) {
+    console.error('deleteProduct error:', err);
     return { success: false, error: err.message };
   }
 }

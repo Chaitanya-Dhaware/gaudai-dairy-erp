@@ -432,24 +432,45 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
-  updateProduct: async (productId, data) => {
+  updateProduct: async (productId, data, newProductId) => {
     set({ loading: true });
     try {
-      const res = await FS.updateProduct(productId, data);
+      const res = await FS.updateProduct(productId, data, newProductId);
       if (res.success) {
-        toast.success('दर सुधारित केला / Product updated!');
+        toast.success('उत्पादन सुधारित केले / Product updated!');
+        const updatedId = newProductId || productId;
         set({
           products: get().products.map(p =>
-            p.product_id === productId ? { ...p, unit_price: parseFloat(data.unit_price), updated_at: new Date().toISOString() } : p
+            p.product_id === productId ? { ...p, ...data, product_id: updatedId, updated_at: new Date().toISOString() } : p
           )
         });
         invalidateCache('products');
-        enqueueSyncJob('updateProduct', { product_id: productId, data }, `upd_prod_${productId}`);
+        enqueueSyncJob('updateProduct', { product_id: productId, new_product_id: newProductId, data }, `upd_prod_${productId}`);
         return true;
       }
       return false;
     } catch {
-      toast.error('दर बदल जतन झाला नाही / Price update error');
+      toast.error('बदल जतन झाला नाही / Update error');
+      return false;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  deleteProduct: async (productId) => {
+    set({ loading: true });
+    try {
+      const res = await FS.deleteProduct(productId);
+      if (res.success) {
+        toast.success('उत्पादन हटवले / Product deleted!');
+        set({ products: get().products.filter(p => p.product_id !== productId) });
+        invalidateCache('products');
+        enqueueSyncJob('deleteProduct', { product_id: productId }, `del_prod_${productId}`);
+        return true;
+      }
+      return false;
+    } catch {
+      toast.error('उत्पादन हटवण्यास अडचण / Delete error');
       return false;
     } finally {
       set({ loading: false });

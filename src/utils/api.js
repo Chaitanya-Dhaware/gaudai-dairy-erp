@@ -176,9 +176,22 @@ async function syncWriteToFirestore(action, responseData, payload) {
       }
       case 'updateProduct': {
         const productId = payload.product_id;
+        const newProductId = payload.new_product_id;
         const updateData = payload.data;
         if (productId && updateData) {
-          await setDoc(doc(db, 'products', productId), updateData, { merge: true });
+          if (newProductId && newProductId !== productId) {
+            await setDoc(doc(db, 'products', newProductId), { ...updateData, product_id: newProductId }, { merge: true });
+            await deleteDoc(doc(db, 'products', productId));
+          } else {
+            await setDoc(doc(db, 'products', productId), updateData, { merge: true });
+          }
+        }
+        break;
+      }
+      case 'deleteProduct': {
+        const productId = payload.product_id;
+        if (productId) {
+          await deleteDoc(doc(db, 'products', productId));
         }
         break;
       }
@@ -341,12 +354,33 @@ async function writeToFirestore(action, payload) {
         return { success: true, message: 'Product added successfully', data: newProduct };
       }
       case 'updateProduct': {
-        const prodRef = doc(db, 'products', payload.product_id);
-        await updateDoc(prodRef, {
-          unit_price: parseFloat(payload.data.unit_price),
-          updated_at: new Date().toISOString()
-        });
+        const productId = payload.product_id;
+        const newProductId = payload.new_product_id;
+        const updateData = payload.data;
+        if (newProductId && newProductId !== productId) {
+          const oldDocRef = doc(db, 'products', productId);
+          const newDocRef = doc(db, 'products', newProductId);
+          await setDoc(newDocRef, {
+            ...updateData,
+            product_id: newProductId,
+            updated_at: new Date().toISOString()
+          });
+          await deleteDoc(oldDocRef);
+        } else {
+          const prodRef = doc(db, 'products', productId);
+          await updateDoc(prodRef, {
+            ...updateData,
+            updated_at: new Date().toISOString()
+          });
+        }
         return { success: true, message: 'Product updated successfully' };
+      }
+      case 'deleteProduct': {
+        const productId = payload.product_id;
+        if (productId) {
+          await deleteDoc(doc(db, 'products', productId));
+        }
+        return { success: true, message: 'Product deleted successfully' };
       }
       case 'updateSettings': {
         await setDoc(doc(db, 'settings', 'general'), payload);
@@ -789,11 +823,23 @@ function handleMockAPI(action, payload) {
       products = getMockData('GAUDAI_PRODUCTS');
       const prodIdx = products.findIndex(p => p.product_id === payload.product_id);
       if (prodIdx !== -1) {
-        products[prodIdx] = { ...products[prodIdx], ...payload.data, updated_at: new Date().toISOString() };
+        const updatedId = payload.new_product_id || payload.product_id;
+        products[prodIdx] = { 
+          ...products[prodIdx], 
+          ...payload.data, 
+          product_id: updatedId,
+          updated_at: new Date().toISOString() 
+        };
         setMockData('GAUDAI_PRODUCTS', products);
         return { success: true, data: products[prodIdx] };
       }
       return { success: false, message: 'Product not found' };
+    }
+    case 'deleteProduct': {
+      products = getMockData('GAUDAI_PRODUCTS');
+      const filteredProducts = products.filter(p => p.product_id !== payload.product_id);
+      setMockData('GAUDAI_PRODUCTS', filteredProducts);
+      return { success: true, message: 'Product deleted successfully' };
     }
 
     case 'addSale': {
