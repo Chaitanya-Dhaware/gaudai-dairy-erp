@@ -24,37 +24,55 @@ async function callGeminiWithFallback(body) {
     throw new Error('Gemini API key not configured in environment variables');
   }
 
-  console.log(`Calling Gemini API using model: ${GEMINI_MODEL}...`);
-  let response = await postToGemini(GEMINI_MODEL, body);
+  const modelsToTry = [
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash'
+  ];
 
-  if (!response.ok) {
-    const isQuotaOrAccessError = response.status === 429 || response.status === 400 || response.status === 403;
-    if (isQuotaOrAccessError) {
-      const errorText = await response.clone().text();
-      console.warn(`Gemini call with ${GEMINI_MODEL} failed (Status: ${response.status}). Attempting fallback to ${GEMINI_MODEL_LEGACY}... Error detail:`, errorText);
-      
-      // Fallback to legacy 1.5-flash
-      response = await postToGemini(GEMINI_MODEL_LEGACY, body);
-      
-      if (!response.ok) {
-        const errorTextLeg = await response.text();
-        throw new Error(`Gemini Fallback Error (${GEMINI_MODEL_LEGACY}): ${response.status} - ${errorTextLeg}`);
+  let lastError = null;
+
+  for (const model of modelsToTry) {
+    try {
+      console.log(`Calling Gemini API using model: ${model}...`);
+      const response = await postToGemini(model, body);
+
+      if (response.ok) {
+        const data = await response.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          console.log(`Successfully completed request using model: ${model}`);
+          return text.trim();
+        }
+      } else {
+        const errorText = await response.text();
+        lastError = new Error(`Model ${model} returned status ${response.status}: ${errorText}`);
+        console.warn(`Gemini call with ${model} failed. Trying next model... Error detail:`, errorText);
       }
-      
-      console.log(`Successfully completed request using fallback model: ${GEMINI_MODEL_LEGACY}`);
-    } else {
-      const errorText = await response.text();
-      throw new Error(`Gemini API Error: ${response.status} - ${errorText}`);
+    } catch (err) {
+      lastError = err;
+      console.warn(`Error calling Gemini with model ${model}:`, err);
     }
   }
 
-  const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    throw new Error('Empty response received from Gemini API');
+  // If all models failed, parse the last error message cleanly for the user
+  let readableMessage = 'The AI models are currently busy or unavailable. Please try again in a few seconds.';
+  if (lastError && lastError.message) {
+    try {
+      // Look for a nested JSON error message inside the Google API response string
+      const jsonMatch = lastError.message.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const errObj = JSON.parse(jsonMatch[0]);
+        if (errObj?.error?.message) {
+          readableMessage = errObj.error.message;
+        }
+      }
+    } catch (e) {
+      // fallback to raw message
+    }
   }
 
-  return text.trim();
+  throw new Error(readableMessage);
 }
 
 /**
