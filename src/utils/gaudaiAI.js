@@ -601,13 +601,40 @@ export async function executeAction(action, appStore) {
       }
 
       case 'ADD_SALE': {
-        const totalAmt = parseFloat(data.total_amount || data.total || 0) || 0;
-        const paidAmt = parseFloat(data.paid_amount || data.paid || 0) || 0;
-        const dueAmt = parseFloat(data.due_amount || data.due || (totalAmt - paidAmt)) || 0;
+        // Handle products -> items mapping if products are sent
+        let items = data.items || [];
+        if ((!items || items.length === 0) && data.products && data.products.length > 0) {
+          items = data.products.map(p => ({
+            product_id: p.product_id,
+            product_name: p.product_name || p.name || 'Ghee 1L',
+            quantity: parseFloat(p.quantity) || 1,
+            unit_price: parseFloat(p.unit_price || p.price || 0) || 0,
+            total: (parseFloat(p.quantity) || 1) * (parseFloat(p.unit_price || p.price || 0) || 0)
+          }));
+        }
+
+        // Calculate total amount from items if not provided
+        let totalAmt = parseFloat(data.total_amount || data.total || 0) || 0;
+        if (totalAmt === 0 && items.length > 0) {
+          totalAmt = items.reduce((sum, item) => sum + (item.total || 0), 0);
+        }
+
+        // Handle paid/due amount based on is_paid boolean or explicit numbers
+        let paidAmt = 0;
+        if (data.hasOwnProperty('paid_amount') || data.hasOwnProperty('paid')) {
+          paidAmt = parseFloat(data.paid_amount || data.paid || 0) || 0;
+        } else if (data.is_paid === true) {
+          paidAmt = totalAmt;
+        } else if (data.is_paid === false) {
+          paidAmt = 0;
+        }
+
+        let dueAmt = parseFloat(data.due_amount || data.due || (totalAmt - paidAmt)) || 0;
+
         const success = await appStore.getState().addSale({
           customer_id: data.customer_id,
-          date: data.date || new Date().toISOString().split('T')[0],
-          items: data.items || [],
+          date: data.date || data.sale_date || new Date().toISOString().split('T')[0],
+          items: items,
           total_amount: totalAmt,
           paid_amount: paidAmt,
           due_amount: dueAmt
