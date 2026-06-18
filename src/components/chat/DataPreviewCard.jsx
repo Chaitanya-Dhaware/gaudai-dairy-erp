@@ -1,12 +1,25 @@
+import { useState } from 'react';
 import { useChatStore } from '../../store/chatStore';
-import { Check, X, AlertTriangle } from 'lucide-react';
+import { useAppStore } from '../../store/appStore';
+import { Check, X, AlertTriangle, Trash2, Plus } from 'lucide-react';
 
 /**
  * DataPreviewCard — Shows extracted data for user confirmation before saving.
- * Handles both single-action and batch OCR imports.
+ * Handles both single-action and batch OCR imports with interactive editing.
  */
 export default function DataPreviewCard({ action }) {
-  const { confirmAction, rejectAction, isProcessing } = useChatStore();
+  const { confirmAction, rejectAction, isProcessing, updatePendingActionData } = useChatStore();
+  const { farmers = [], customers = [], settings = {} } = useAppStore();
+  const baseRate = settings.baseRate || 8.5;
+
+  const [prevAction, setPrevAction] = useState(action);
+  const [localEntries, setLocalEntries] = useState(action?.data?.entries || []);
+
+  if (action !== prevAction) {
+    setPrevAction(action);
+    setLocalEntries(action?.data?.entries || []);
+  }
+
 
   if (!action) return null;
 
@@ -54,8 +67,183 @@ export default function DataPreviewCard({ action }) {
     );
   }
 
-  // Batch OCR card
-  const entries = data?.entries || [];
+  // Helper to re-run validation on an entry
+  const runValidation = (entry) => {
+    const docType = data?.document_type;
+    const warnings = [];
+
+    if (docType === 'COLLECTION') {
+      const qty = parseFloat(entry.fields?.quantity);
+      const fat = parseFloat(entry.fields?.fat);
+      if (!entry.matched_id) {
+        warnings.push("Farmer not found in records");
+      }
+      if (isNaN(qty) || qty <= 0) {
+        warnings.push("Qty must be > 0");
+      }
+      if (isNaN(fat) || fat <= 0) {
+        warnings.push("Fat must be > 0");
+      }
+    } else if (docType === 'SALES') {
+      const qty = parseFloat(entry.fields?.quantity);
+      const total = parseFloat(entry.fields?.total || entry.fields?.amount);
+      if (!entry.matched_id) {
+        warnings.push("Customer not found in records");
+      }
+      if (!entry.fields?.product) {
+        warnings.push("Product is required");
+      }
+      if (isNaN(qty) || qty <= 0) {
+        warnings.push("Qty must be > 0");
+      }
+      if (isNaN(total) || total <= 0) {
+        warnings.push("Total must be > 0");
+      }
+    } else if (docType === 'EXPENSE') {
+      const amt = parseFloat(entry.fields?.amount);
+      const reason = entry.fields?.reason || entry.name;
+      if (!reason) {
+        warnings.push("Reason is required");
+      }
+      if (isNaN(amt) || amt <= 0) {
+        warnings.push("Amount must be > 0");
+      }
+    } else if (docType === 'PAYMENT') {
+      const amt = parseFloat(entry.fields?.amount);
+      if (!entry.matched_id) {
+        warnings.push("Person not found in records");
+      }
+      if (isNaN(amt) || amt <= 0) {
+        warnings.push("Amount must be > 0");
+      }
+    } else if (docType === 'CUSTOMER_LIST' || docType === 'CUSTOMERS') {
+      const shopName = entry.fields?.shop_name || entry.name;
+      const ownerName = entry.fields?.owner_name;
+      if (!shopName && !ownerName) {
+        warnings.push("Shop name or Owner name is required");
+      }
+    } else if (docType === 'FARMER_LIST' || docType === 'FARMERS') {
+      const name = entry.fields?.name || entry.name;
+      if (!name) {
+        warnings.push("Name is required");
+      }
+    }
+
+    entry.validation = {
+      valid: warnings.length === 0,
+      warnings
+    };
+  };
+
+  // Handler for entry input changes
+  const handleEntryChange = (index, fieldPath, val) => {
+    const updatedEntries = [...localEntries];
+    const current = { ...updatedEntries[index] };
+    
+    if (fieldPath.length === 1) {
+      current[fieldPath[0]] = val;
+    } else if (fieldPath.length === 2) {
+      current[fieldPath[0]] = {
+        ...(current[fieldPath[0]] || {}),
+        [fieldPath[1]]: val
+      };
+    }
+
+    const docType = data?.document_type;
+    
+    if (docType === 'COLLECTION') {
+      const qty = parseFloat(current.fields?.quantity) || 0;
+      const fat = parseFloat(current.fields?.fat) || 0;
+      const rate = fat * baseRate;
+      const total = rate * qty;
+      current.calculated = {
+        rate: Math.round(rate * 100) / 100,
+        total: Math.round(total * 100) / 100
+      };
+
+      if (fieldPath[0] === 'matched_id') {
+        const selectedFarmer = farmers.find(f => f.farmer_id === val);
+        if (selectedFarmer) {
+          current.matched_name = selectedFarmer.name;
+          current.name = selectedFarmer.name;
+        } else {
+          current.matched_name = '';
+        }
+      }
+    }
+
+    if (docType === 'PAYMENT' && fieldPath[0] === 'matched_id') {
+      const selectedFarmer = farmers.find(f => f.farmer_id === val);
+      const selectedCustomer = customers.find(c => c.customer_id === val);
+      if (selectedFarmer) {
+        current.matched_name = selectedFarmer.name;
+        current.name = selectedFarmer.name;
+      } else if (selectedCustomer) {
+        current.matched_name = selectedCustomer.shop_name;
+        current.name = selectedCustomer.shop_name;
+      } else {
+        current.matched_name = '';
+      }
+    }
+
+    if (docType === 'SALES' && fieldPath[0] === 'matched_id') {
+      const selectedCustomer = customers.find(c => c.customer_id === val);
+      if (selectedCustomer) {
+        current.matched_name = selectedCustomer.shop_name;
+        current.name = selectedCustomer.shop_name;
+      } else {
+        current.matched_name = '';
+      }
+    }
+
+    runValidation(current);
+
+    updatedEntries[index] = current;
+    setLocalEntries(updatedEntries);
+    updatePendingActionData({ entries: updatedEntries });
+  };
+
+  // Handler for adding a new empty entry
+  const handleAddEntry = () => {
+    const docType = data?.document_type;
+    const newEntry = {
+      name: '',
+      matched_id: '',
+      matched_name: '',
+      date: data?.extracted_date || new Date().toISOString().split('T')[0],
+      fields: {},
+      validation: { valid: false, warnings: ['Empty entry'] }
+    };
+
+    if (docType === 'COLLECTION') {
+      newEntry.fields = { quantity: '', fat: '', snf: '8.5', milk_type: 'Cow' };
+      newEntry.calculated = { rate: 0, total: 0 };
+    } else if (docType === 'SALES') {
+      newEntry.fields = { product: 'Milk', quantity: '', total: '' };
+    } else if (docType === 'EXPENSE') {
+      newEntry.fields = { reason: '', amount: '', category: 'Other' };
+    } else if (docType === 'PAYMENT') {
+      newEntry.fields = { amount: '' };
+    } else if (docType === 'CUSTOMER_LIST' || docType === 'CUSTOMERS') {
+      newEntry.fields = { shop_name: '', owner_name: '', mobile: '', address: '' };
+    } else if (docType === 'FARMER_LIST' || docType === 'FARMERS') {
+      newEntry.fields = { name: '', mobile: '', address: '', milk_type: 'Cow' };
+    }
+
+    const updatedEntries = [...localEntries, newEntry];
+    setLocalEntries(updatedEntries);
+    updatePendingActionData({ entries: updatedEntries });
+  };
+
+  // Handler for removing an entry
+  const handleRemoveEntry = (index) => {
+    const updatedEntries = localEntries.filter((_, i) => i !== index);
+    setLocalEntries(updatedEntries);
+    updatePendingActionData({ entries: updatedEntries });
+  };
+
+  // Batch OCR card calculations
+  const entries = localEntries;
   const validEntries = entries.filter(e => e.validation?.valid);
   const invalidEntries = entries.filter(e => !e.validation?.valid);
 
@@ -70,35 +258,35 @@ export default function DataPreviewCard({ action }) {
         </span>
       </div>
 
-      <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+      <div style={{ maxHeight: '350px', overflowY: 'auto', paddingRight: '4px' }}>
         <table className="gaudai-action-table">
           <thead>
             <tr>
-              <th>#</th>
+              <th style={{ width: '24px' }}>#</th>
               <th>Name</th>
               {data?.document_type === 'COLLECTION' && (
                 <>
-                  <th>Qty</th>
-                  <th>Fat</th>
-                  <th>Total</th>
+                  <th style={{ width: '60px' }}>Qty</th>
+                  <th style={{ width: '50px' }}>Fat</th>
+                  <th style={{ width: '60px' }}>Total</th>
                 </>
               )}
               {data?.document_type === 'EXPENSE' && (
                 <>
-                  <th>Amount</th>
-                  <th>Category</th>
+                  <th style={{ width: '70px' }}>Amount</th>
+                  <th style={{ width: '90px' }}>Category</th>
                 </>
               )}
               {data?.document_type === 'SALES' && (
                 <>
                   <th>Product</th>
-                  <th>Qty</th>
-                  <th>Total</th>
+                  <th style={{ width: '55px' }}>Qty</th>
+                  <th style={{ width: '70px' }}>Total</th>
                 </>
               )}
               {data?.document_type === 'PAYMENT' && (
                 <>
-                  <th>Amount</th>
+                  <th style={{ width: '80px' }}>Amount</th>
                 </>
               )}
               {(data?.document_type === 'CUSTOMER_LIST' || data?.document_type === 'CUSTOMERS') && (
@@ -115,75 +303,304 @@ export default function DataPreviewCard({ action }) {
                   <th>Address</th>
                 </>
               )}
-              <th>Status</th>
+              <th style={{ width: '85px', textAlign: 'right' }}>Status</th>
             </tr>
           </thead>
           <tbody>
             {entries.map((entry, i) => (
-              <tr key={i} className={entry.validation?.valid ? '' : 'invalid'}>
+              <tr key={i} className={entry.validation?.valid ? '' : 'invalid-row'} style={{ opacity: entry.validation?.valid ? 1 : 0.85 }}>
                 <td>{i + 1}</td>
-                <td>{entry.matched_name || entry.name || (data?.document_type === 'CUSTOMER_LIST' || data?.document_type === 'CUSTOMERS' ? entry.fields?.shop_name : '')}</td>
+                
+                {/* Name Column */}
+                <td>
+                  {data?.document_type === 'COLLECTION' && (
+                    <select
+                      className="gaudai-table-select"
+                      value={entry.matched_id || ''}
+                      onChange={(e) => handleEntryChange(i, ['matched_id'], e.target.value)}
+                    >
+                      <option value="">Select Farmer...</option>
+                      {farmers.map(f => (
+                        <option key={f.farmer_id} value={f.farmer_id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {data?.document_type === 'SALES' && (
+                    <select
+                      className="gaudai-table-select"
+                      value={entry.matched_id || ''}
+                      onChange={(e) => handleEntryChange(i, ['matched_id'], e.target.value)}
+                    >
+                      <option value="">Select Customer...</option>
+                      {customers.map(c => (
+                        <option key={c.customer_id} value={c.customer_id}>
+                          {c.shop_name} ({c.owner_name})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {data?.document_type === 'PAYMENT' && (
+                    <select
+                      className="gaudai-table-select"
+                      value={entry.matched_id || ''}
+                      onChange={(e) => handleEntryChange(i, ['matched_id'], e.target.value)}
+                    >
+                      <option value="">Select Person...</option>
+                      <optgroup label="Customers">
+                        {customers.map(c => (
+                          <option key={c.customer_id} value={c.customer_id}>
+                            {c.shop_name} (Customer)
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Farmers">
+                        {farmers.map(f => (
+                          <option key={f.farmer_id} value={f.farmer_id}>
+                            {f.name} (Farmer)
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  )}
+
+                  {data?.document_type === 'EXPENSE' && (
+                    <input
+                      type="text"
+                      className="gaudai-table-input"
+                      value={entry.fields?.reason || entry.name || ''}
+                      onChange={(e) => handleEntryChange(i, ['fields', 'reason'], e.target.value)}
+                      placeholder="Reason"
+                    />
+                  )}
+
+                  {(data?.document_type === 'CUSTOMER_LIST' || data?.document_type === 'CUSTOMERS') && (
+                    <input
+                      type="text"
+                      className="gaudai-table-input"
+                      value={entry.fields?.shop_name || entry.name || ''}
+                      onChange={(e) => handleEntryChange(i, ['fields', 'shop_name'], e.target.value)}
+                      placeholder="Shop Name"
+                    />
+                  )}
+
+                  {(data?.document_type === 'FARMER_LIST' || data?.document_type === 'FARMERS') && (
+                    <input
+                      type="text"
+                      className="gaudai-table-input"
+                      value={entry.fields?.name || entry.name || ''}
+                      onChange={(e) => handleEntryChange(i, ['fields', 'name'], e.target.value)}
+                      placeholder="Farmer Name"
+                    />
+                  )}
+                </td>
+
+                {/* Additional Columns based on Document Type */}
                 {data?.document_type === 'COLLECTION' && (
                   <>
-                    <td>{entry.fields?.quantity || '—'}</td>
-                    <td>{entry.fields?.fat || '—'}</td>
-                    <td>₹{entry.calculated?.total?.toFixed(0) || '—'}</td>
+                    <td>
+                      <input
+                        type="number"
+                        className="gaudai-table-input"
+                        value={entry.fields?.quantity || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'quantity'], e.target.value)}
+                        placeholder="Liters"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="0.1"
+                        className="gaudai-table-input"
+                        value={entry.fields?.fat || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'fat'], e.target.value)}
+                        placeholder="Fat"
+                      />
+                    </td>
+                    <td style={{ fontWeight: '600' }}>
+                      ₹{entry.calculated?.total?.toFixed(0) || '0'}
+                    </td>
                   </>
                 )}
+
                 {data?.document_type === 'EXPENSE' && (
                   <>
-                    <td>₹{entry.fields?.amount || '—'}</td>
-                    <td>{entry.fields?.category || 'Other'}</td>
+                    <td>
+                      <input
+                        type="number"
+                        className="gaudai-table-input"
+                        value={entry.fields?.amount || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'amount'], e.target.value)}
+                        placeholder="Amount"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="gaudai-table-input"
+                        value={entry.fields?.category || 'Other'}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'category'], e.target.value)}
+                        placeholder="Category"
+                      />
+                    </td>
                   </>
                 )}
+
                 {data?.document_type === 'SALES' && (
                   <>
-                    <td>{entry.fields?.product || '—'}</td>
-                    <td>{entry.fields?.quantity || '—'}</td>
-                    <td>₹{entry.fields?.total || entry.fields?.amount || '—'}</td>
+                    <td>
+                      <input
+                        type="text"
+                        className="gaudai-table-input"
+                        value={entry.fields?.product || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'product'], e.target.value)}
+                        placeholder="Product"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="gaudai-table-input"
+                        value={entry.fields?.quantity || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'quantity'], e.target.value)}
+                        placeholder="Qty"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="gaudai-table-input"
+                        value={entry.fields?.total || entry.fields?.amount || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'total'], e.target.value)}
+                        placeholder="Total"
+                      />
+                    </td>
                   </>
                 )}
+
                 {data?.document_type === 'PAYMENT' && (
                   <>
-                    <td>₹{entry.fields?.amount || '—'}</td>
+                    <td>
+                      <input
+                        type="number"
+                        className="gaudai-table-input"
+                        value={entry.fields?.amount || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'amount'], e.target.value)}
+                        placeholder="Amount"
+                      />
+                    </td>
                   </>
                 )}
+
                 {(data?.document_type === 'CUSTOMER_LIST' || data?.document_type === 'CUSTOMERS') && (
                   <>
-                    <td>{entry.fields?.owner_name || '—'}</td>
-                    <td>{entry.fields?.mobile || '—'}</td>
-                    <td>{entry.fields?.address || '—'}</td>
+                    <td>
+                      <input
+                        type="text"
+                        className="gaudai-table-input"
+                        value={entry.fields?.owner_name || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'owner_name'], e.target.value)}
+                        placeholder="Owner Name"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="gaudai-table-input"
+                        value={entry.fields?.mobile || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'mobile'], e.target.value)}
+                        placeholder="Mobile"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="gaudai-table-input"
+                        value={entry.fields?.address || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'address'], e.target.value)}
+                        placeholder="Address"
+                      />
+                    </td>
                   </>
                 )}
+
                 {(data?.document_type === 'FARMER_LIST' || data?.document_type === 'FARMERS') && (
                   <>
-                    <td>{entry.fields?.mobile || '—'}</td>
-                    <td>{entry.fields?.milk_type || 'Cow'}</td>
-                    <td>{entry.fields?.address || '—'}</td>
+                    <td>
+                      <input
+                        type="text"
+                        className="gaudai-table-input"
+                        value={entry.fields?.mobile || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'mobile'], e.target.value)}
+                        placeholder="Mobile"
+                      />
+                    </td>
+                    <td>
+                      <select
+                        className="gaudai-table-select"
+                        value={entry.fields?.milk_type || 'Cow'}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'milk_type'], e.target.value)}
+                      >
+                        <option value="Cow">Cow</option>
+                        <option value="Buffalo">Buffalo</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="gaudai-table-input"
+                        value={entry.fields?.address || ''}
+                        onChange={(e) => handleEntryChange(i, ['fields', 'address'], e.target.value)}
+                        placeholder="Address"
+                      />
+                    </td>
                   </>
                 )}
-                <td>
-                  {entry.validation?.valid ? (
-                    <Check size={14} style={{ color: '#16A34A' }} />
-                  ) : (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <AlertTriangle size={12} style={{ color: '#DC2626' }} />
-                      <span className="warning-cell">
-                        {entry.validation?.warnings?.[0] || 'Invalid'}
+
+                {/* Validation Status & Delete Button */}
+                <td style={{ textAlign: 'right' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                    {entry.validation?.valid ? (
+                      <Check size={14} style={{ color: '#16A34A', flexShrink: 0 }} />
+                    ) : (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }} title={entry.validation?.warnings?.join(', ')}>
+                        <AlertTriangle size={12} style={{ color: '#DC2626', flexShrink: 0 }} />
+                        <span className="warning-cell" style={{ display: 'inline-block', maxWidth: '60px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {entry.validation?.warnings?.[0] || 'Invalid'}
+                        </span>
                       </span>
-                    </span>
-                  )}
+                    )}
+                    <button
+                      type="button"
+                      className="gaudai-delete-btn"
+                      onClick={() => handleRemoveEntry(i)}
+                      title="Remove row"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+
+        <button
+          type="button"
+          className="gaudai-add-row-btn"
+          onClick={handleAddEntry}
+        >
+          <Plus size={14} /> Add Entry Row
+        </button>
       </div>
 
       {invalidEntries.length > 0 && (
         <p style={{ fontSize: '11px', color: '#DC2626', margin: '8px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
           <AlertTriangle size={12} />
-          {invalidEntries.length} entries could not be validated and will be skipped.
+          {invalidEntries.length} entries have validation warnings and will be skipped unless corrected.
         </p>
       )}
 

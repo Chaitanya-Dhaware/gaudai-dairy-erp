@@ -878,10 +878,44 @@ function handleMockAPI(action, payload) {
         customers[cIdx].current_due = Math.max(0, (customers[cIdx].current_due || 0) - amt);
         setMockData('GAUDAI_CUSTOMERS', customers);
         
-        // Also add a sales payment entry
+        // Also add a sales payment entry and update outstanding bills using FIFO allocation
         sales = getMockData('GAUDAI_SALES');
+        
+        let remainingPayment = amt;
+        const pendingSales = sales.filter(s => 
+          s.customer_id === payload.customer_id && 
+          s.status !== 'Paid' && 
+          !s.is_payment_record && 
+          parseFloat(s.due_amount || 0) > 0
+        );
+        
+        // Sort oldest first (ascending by date then timestamp)
+        pendingSales.sort((a, b) => {
+          const dateA = a.date || '';
+          const dateB = b.date || '';
+          if (dateA !== dateB) return dateA.localeCompare(dateB);
+          return (a.timestamp || '').localeCompare(b.timestamp || '');
+        });
+
+        for (const sale of pendingSales) {
+          if (remainingPayment <= 0) break;
+          const due = parseFloat(sale.due_amount || 0);
+          const applied = Math.min(due, remainingPayment);
+          const newPaid = (parseFloat(sale.paid_amount || 0)) + applied;
+          const newDue = Math.max(0, due - applied);
+          const newStatus = newDue <= 0 ? 'Paid' : 'Partial';
+
+          const sIdx = sales.findIndex(s => s.bill_id === sale.bill_id);
+          if (sIdx !== -1) {
+            sales[sIdx].paid_amount = newPaid;
+            sales[sIdx].due_amount = newDue;
+            sales[sIdx].status = newStatus;
+          }
+          remainingPayment -= applied;
+        }
+
         sales.unshift({
-          bill_id: `PAY${Date.now()}`,
+          bill_id: payload.payment_id || `PAY${Date.now()}`,
           customer_id: payload.customer_id,
           date: new Date().toISOString().split('T')[0],
           items: [],
@@ -892,6 +926,7 @@ function handleMockAPI(action, payload) {
           timestamp: new Date().toISOString(),
           is_payment_record: true
         });
+        
         setMockData('GAUDAI_SALES', sales);
 
         return { success: true, current_due: customers[cIdx].current_due };

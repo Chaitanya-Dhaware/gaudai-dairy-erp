@@ -394,7 +394,7 @@ function doPost(e) {
         result = addSale(requestData);
         break;
       case 'recordPayment':
-        result = recordPayment(requestData.customer_id, requestData.amount);
+        result = recordPayment(requestData.customer_id, requestData.amount, requestData.payment_id);
         break;
       case 'getSalesHistory':
         result = getSalesHistory();
@@ -1736,7 +1736,7 @@ function deleteProduct(productId) {
 function addSale(data) {
   var ss = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
   var salesSheet = ss.getSheetByName("Sales");
-  var billId = "B" + Date.now();
+  var billId = data.bill_id || ("B" + Date.now());
 
   var totalVal = parseSafeFloat(data.total_amount);
   var paidVal = parseSafeFloat(data.paid_amount);
@@ -1789,13 +1789,14 @@ function addSale(data) {
   };
 }
 
-function recordPayment(customerId, amount) {
+function recordPayment(customerId, amount, paymentId) {
   var ss = SpreadsheetApp.openById(CONFIG.CUSTOMER_DB_ID);
   var custSheet = ss.getSheetByName("Customers");
   var custData = custSheet.getDataRange().getValues();
+  var amtVal = parseSafeFloat(amount);
+
   for (var i = 1; i < custData.length; i++) {
     if (custData[i][0] === customerId) {
-      var amtVal = parseSafeFloat(amount);
       var currentDue = Math.max(0, parseSafeFloat(custData[i][5]) - amtVal);
       custSheet.getRange(i + 1, 6).setValue(currentDue);
       
@@ -1803,7 +1804,7 @@ function recordPayment(customerId, amount) {
       var paySheet = ss.getSheetByName("Payments");
       var customerName = getCustomerNameById(ss, customerId);
       paySheet.appendRow([
-        "PAY" + Date.now(),
+        paymentId || ("PAY" + Date.now()),
         customerId,
         customerName,
         amtVal,
@@ -1813,6 +1814,42 @@ function recordPayment(customerId, amount) {
       break;
     }
   }
+
+  // FIFO allocation to Sales sheet
+  try {
+    var salesSheet = ss.getSheetByName("Sales");
+    var salesData = salesSheet.getDataRange().getValues();
+    var remainingPayment = amtVal;
+
+    for (var j = 1; j < salesData.length; j++) {
+      if (remainingPayment <= 0) break;
+      
+      var rowCustomerId = String(salesData[j][1]);
+      var rowStatus = String(salesData[j][7]);
+      
+      if (rowCustomerId === customerId && rowStatus !== "Paid") {
+        var rowTotal = parseSafeFloat(salesData[j][4]);
+        var rowPaid = parseSafeFloat(salesData[j][5]);
+        var rowDue = parseSafeFloat(salesData[j][6]);
+
+        if (rowDue <= 0) continue;
+
+        var paymentApplied = Math.min(rowDue, remainingPayment);
+        var newPaid = rowPaid + paymentApplied;
+        var newDue = Math.max(0, rowDue - paymentApplied);
+        var newStatus = newDue <= 0 ? "Paid" : "Partial";
+
+        salesSheet.getRange(j + 1, 6).setValue(newPaid);   // paid_amount (Col F)
+        salesSheet.getRange(j + 1, 7).setValue(newDue);    // due_amount (Col G)
+        salesSheet.getRange(j + 1, 8).setValue(newStatus);   // status (Col H)
+
+        remainingPayment -= paymentApplied;
+      }
+    }
+  } catch(salesErr) {
+    logErrorToSheets("Error in recordPayment FIFO allocation: " + salesErr.toString());
+  }
+
   return { success: true };
 }
 

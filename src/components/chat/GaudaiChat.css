@@ -95,8 +95,9 @@
   bottom: 96px;
   right: 24px;
   width: 400px;
-  height: 560px;
-  max-height: calc(100vh - 120px);
+  height: calc(100vh - 180px);
+  max-height: calc(100vh - 180px);
+  min-height: 500px;
   border-radius: 20px;
   z-index: 9998;
   display: flex;
@@ -223,6 +224,7 @@
   flex-direction: column;
   gap: 12px;
   scroll-behavior: smooth;
+  min-height: 0;
 }
 
 .gaudai-messages::-webkit-scrollbar {
@@ -712,6 +714,8 @@
   justify-content: center;
   padding: 24px 16px;
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .gaudai-suggestions-welcome {
@@ -868,3 +872,89 @@
     bottom: 80px;
   }
 }
+
+/* ─── Premium Editable Table Styling ────────────────────────── */
+
+.gaudai-table-input {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: inherit;
+  color: #1F2937;
+  background-color: #F9FAFB;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.gaudai-table-input:focus {
+  border-color: #0F6E56;
+  background-color: white;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(15, 110, 86, 0.1);
+}
+
+.gaudai-table-select {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: inherit;
+  color: #1F2937;
+  background-color: #F9FAFB;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.gaudai-table-select:focus {
+  border-color: #0F6E56;
+  background-color: white;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(15, 110, 86, 0.1);
+}
+
+.gaudai-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #9CA3AF;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.gaudai-delete-btn:hover {
+  background: #FEE2E2;
+  color: #EF4444;
+}
+
+.gaudai-add-row-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px;
+  margin-top: 10px;
+  border: 1px dashed #D1D5DB;
+  border-radius: 8px;
+  background: transparent;
+  color: #4B5563;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.gaudai-add-row-btn:hover {
+  border-color: #0F6E56;
+  color: #0F6E56;
+  background: #F0FDF9;
+}
+

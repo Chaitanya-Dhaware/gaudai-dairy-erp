@@ -159,6 +159,66 @@ describe('Gaudai AI Dairy ERP - AppStore', () => {
     expect(customerAfter.current_due).toBe(initialDue + 400);
   });
 
+  it('should record customer payment and update sales dues chronologically (FIFO)', async () => {
+    const store = useAppStore.getState();
+    const testCustomerId = 'c-03'; // Krishna Sweets (no seed outstanding sales)
+    
+    const customer = store.customers.find(c => c.customer_id === testCustomerId);
+    customer.current_due = 0;
+    
+    // Add two sales bills for c-03:
+    // Bill 1: ₹1000 total, ₹0 paid, ₹1000 due
+    await store.addSale({
+      bill_id: 'B_TEST_01',
+      customer_id: testCustomerId,
+      items: [{ product_id: 'P001', product_name: 'Product 1', quantity: 1, unit_price: 1000, total: 1000 }],
+      total_amount: 1000,
+      paid_amount: 0,
+      due_amount: 1000,
+      date: '2026-05-25'
+    });
+
+    // Bill 2: ₹1500 total, ₹0 paid, ₹1500 due
+    await store.addSale({
+      bill_id: 'B_TEST_02',
+      customer_id: testCustomerId,
+      items: [{ product_id: 'P001', product_name: 'Product 1', quantity: 1, unit_price: 1500, total: 1500 }],
+      total_amount: 1500,
+      paid_amount: 0,
+      due_amount: 1500,
+      date: '2026-05-26'
+    });
+
+    // Verify current due is ₹2500
+    let state = useAppStore.getState();
+    let updatedCustomer = state.customers.find(c => c.customer_id === testCustomerId);
+    expect(updatedCustomer.current_due).toBe(2500);
+
+    // Record customer payment of ₹1200
+    // This should:
+    // 1. Fully clear Bill 1 (₹1000 due -> ₹0 due, Paid status)
+    // 2. Partially clear Bill 2 (₹1500 due -> ₹1300 due, Partial status)
+    // 3. Update customer outstanding due to ₹1300
+    const success = await store.recordCustomerPayment(testCustomerId, 1200);
+    expect(success).toBe(true);
+
+    state = useAppStore.getState();
+    updatedCustomer = state.customers.find(c => c.customer_id === testCustomerId);
+    expect(updatedCustomer.current_due).toBe(1300);
+
+    // Find the updated bills in state
+    const bill1 = state.sales.find(s => s.bill_id === 'B_TEST_01');
+    const bill2 = state.sales.find(s => s.bill_id === 'B_TEST_02');
+
+    expect(bill1.due_amount).toBe(0);
+    expect(bill1.paid_amount).toBe(1000);
+    expect(bill1.status).toBe('Paid');
+
+    expect(bill2.due_amount).toBe(1300);
+    expect(bill2.paid_amount).toBe(200);
+    expect(bill2.status).toBe('Partial');
+  });
+
   it('should record an operational expense', async () => {
     const store = useAppStore.getState();
     const initialExpensesCount = store.expenses.length;

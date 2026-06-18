@@ -25,7 +25,7 @@ export default function MessageList() {
       {/* Show pending action card */}
       {pendingAction && !isProcessing && (
         <div className="gaudai-msg assistant" style={{ maxWidth: '95%' }}>
-          <div className="gaudai-msg-avatar">🐄</div>
+          <div className="gaudai-msg-avatar">🤖</div>
           <div style={{ flex: 1 }}>
             <DataPreviewCard action={pendingAction} />
           </div>
@@ -35,7 +35,7 @@ export default function MessageList() {
       {/* Typing indicator */}
       {isProcessing && (
         <div className="gaudai-typing">
-          <div className="gaudai-typing-avatar">🐄</div>
+          <div className="gaudai-typing-avatar">🤖</div>
           <div className="gaudai-typing-dots">
             <span></span>
             <span></span>
@@ -68,7 +68,7 @@ function MessageBubble({ message }) {
   return (
     <div className={`gaudai-msg ${isUser ? 'user' : 'assistant'}`}>
       <div className="gaudai-msg-avatar">
-        {isUser ? '👤' : '🐄'}
+        {isUser ? '👤' : '🤖'}
       </div>
       <div>
         {/* Image preview for uploaded images */}

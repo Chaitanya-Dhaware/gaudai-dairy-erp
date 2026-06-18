@@ -17,10 +17,8 @@ export default function ChatPanel() {
       {/* ─── Header ─────────────────────────────────────────────── */}
       <div className="gaudai-chat-header">
         <div className="gaudai-chat-header-info">
-          <div className="gaudai-chat-avatar">🐄</div>
           <div className="gaudai-chat-header-text">
             <h3>Gaudai AI</h3>
-            <p>Smart Dairy Assistant</p>
           </div>
         </div>
 

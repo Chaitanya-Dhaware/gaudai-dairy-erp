@@ -276,6 +276,24 @@ export const useChatStore = create((set, get) => ({
   },
 
   /**
+   * Update the pending action data (e.g. from inline edits in preview cards).
+   */
+  updatePendingActionData: (updatedData) => {
+    set(state => {
+      if (!state.pendingAction) return {};
+      return {
+        pendingAction: {
+          ...state.pendingAction,
+          data: {
+            ...state.pendingAction.data,
+            ...updatedData
+          }
+        }
+      };
+    });
+  },
+
+  /**
    * Trigger a suggested action (quick chip click).
    */
   triggerSuggestion: (suggestion) => {

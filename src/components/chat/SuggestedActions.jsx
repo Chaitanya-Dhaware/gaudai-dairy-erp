@@ -17,7 +17,6 @@ export default function SuggestedActions() {
   return (
     <div className="gaudai-suggestions">
       <div className="gaudai-suggestions-welcome">
-        <div className="icon">🐄</div>
         <h4>Gaudai AI Assistant</h4>
         <p>
           Your smart dairy business partner. Ask me anything or pick a quick action below.

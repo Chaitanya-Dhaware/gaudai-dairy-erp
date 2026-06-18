@@ -698,7 +698,7 @@ export async function addSale(data) {
   if (IS_MOCK_MODE) {
     const sales = JSON.parse(localStorage.getItem('GAUDAI_SALES') || '[]');
     const customers = JSON.parse(localStorage.getItem('GAUDAI_CUSTOMERS') || '[]');
-    const billId = `B${Date.now()}`;
+    const billId = data.bill_id || `B${Date.now()}`;
     const totalVal = parseFloat(data.total_amount);
     const paidVal = parseFloat(data.paid_amount);
     const dueVal = parseFloat(data.due_amount);
@@ -726,7 +726,7 @@ export async function addSale(data) {
     return { success: true, message: 'Sale recorded', data: sale };
   }
   try {
-    const billId = `B${Date.now()}`;
+    const billId = data.bill_id || `B${Date.now()}`;
     const totalVal = parseFloat(data.total_amount);
     const paidVal = parseFloat(data.paid_amount);
     const dueVal = parseFloat(data.due_amount);
@@ -778,7 +778,7 @@ export async function recordCustomerPayment(customerId, amount) {
     }
 
     const paymentId = `PAY${Date.now()}`;
-    sales.unshift({
+    const paymentRecord = {
       bill_id: paymentId,
       customer_id: customerId,
       date: new Date().toISOString().split('T')[0],
@@ -789,9 +789,55 @@ export async function recordCustomerPayment(customerId, amount) {
       status: 'Paid',
       timestamp: new Date().toISOString(),
       is_payment_record: true
+    };
+    sales.unshift(paymentRecord);
+
+    // FIFO allocation to outstanding bills in mock mode
+    let remainingPayment = amt;
+    const updatedSales = [];
+    const pendingSales = sales.filter(s => 
+      s.customer_id === customerId && 
+      s.status !== 'Paid' && 
+      !s.is_payment_record && 
+      getSafeFloat(s.due_amount) > 0
+    );
+    // Sort oldest first
+    pendingSales.sort((a, b) => {
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      return (a.timestamp || '').localeCompare(b.timestamp || '');
     });
+
+    for (const sale of pendingSales) {
+      if (remainingPayment <= 0) break;
+      const due = getSafeFloat(sale.due_amount);
+      const applied = Math.min(due, remainingPayment);
+      const newPaid = getSafeFloat(sale.paid_amount) + applied;
+      const newDue = Math.max(0, due - applied);
+      const newStatus = newDue <= 0 ? 'Paid' : 'Partial';
+
+      const sIdx = sales.findIndex(s => s.bill_id === sale.bill_id);
+      if (sIdx !== -1) {
+        sales[sIdx].paid_amount = newPaid;
+        sales[sIdx].due_amount = newDue;
+        sales[sIdx].status = newStatus;
+        updatedSales.push(sales[sIdx]);
+      }
+      remainingPayment -= applied;
+    }
+
     localStorage.setItem('GAUDAI_SALES', JSON.stringify(sales));
-    return { success: true, message: 'Payment recorded' };
+    return { 
+      success: true, 
+      message: 'Payment recorded', 
+      data: { 
+        payment_id: paymentId, 
+        customer_id: customerId, 
+        amount: amt,
+        updatedSales
+      } 
+    };
   }
   try {
     const amt = parseFloat(amount);
@@ -807,7 +853,7 @@ export async function recordCustomerPayment(customerId, amount) {
 
     // Create payment record
     const paymentId = `PAY${Date.now()}`;
-    batch.set(doc(db, 'sales', paymentId), {
+    const paymentRecord = {
       bill_id: paymentId,
       customer_id: customerId,
       date: new Date().toISOString().split('T')[0],
@@ -818,10 +864,70 @@ export async function recordCustomerPayment(customerId, amount) {
       status: 'Paid',
       timestamp: new Date().toISOString(),
       is_payment_record: true
+    };
+    batch.set(doc(db, 'sales', paymentId), paymentRecord);
+
+    // FIFO allocation to outstanding sales in Firestore
+    const salesSnap = await getDocs(collection(db, 'sales'));
+    const pendingSales = [];
+    salesSnap.forEach(docSnap => {
+      const sale = docSnap.data();
+      if (
+        sale.customer_id === customerId &&
+        sale.status !== 'Paid' &&
+        !sale.is_payment_record &&
+        getSafeFloat(sale.due_amount) > 0
+      ) {
+        pendingSales.push({ id: docSnap.id, ...sale });
+      }
     });
 
+    // Sort pending sales by timestamp/date oldest first
+    pendingSales.sort((a, b) => {
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      return (a.timestamp || '').localeCompare(b.timestamp || '');
+    });
+
+    let remainingPayment = amt;
+    const updatedSales = [];
+    
+    for (const sale of pendingSales) {
+      if (remainingPayment <= 0) break;
+      const due = getSafeFloat(sale.due_amount);
+      const applied = Math.min(due, remainingPayment);
+      const newPaid = getSafeFloat(sale.paid_amount) + applied;
+      const newDue = Math.max(0, due - applied);
+      const newStatus = newDue <= 0 ? 'Paid' : 'Partial';
+
+      const saleRef = doc(db, 'sales', sale.bill_id);
+      const saleUpdate = {
+        paid_amount: newPaid,
+        due_amount: newDue,
+        status: newStatus
+      };
+      
+      batch.update(saleRef, saleUpdate);
+      updatedSales.push({
+        ...sale,
+        ...saleUpdate
+      });
+
+      remainingPayment -= applied;
+    }
+
     await batch.commit();
-    return { success: true, message: 'Payment recorded' };
+    return { 
+      success: true, 
+      message: 'Payment recorded', 
+      data: { 
+        payment_id: paymentId, 
+        customer_id: customerId, 
+        amount: amt,
+        updatedSales
+      } 
+    };
   } catch (err) {
     console.error('recordCustomerPayment error:', err);
     return { success: false, error: err.message };

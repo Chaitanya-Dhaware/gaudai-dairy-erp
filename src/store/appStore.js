@@ -519,22 +519,78 @@ export const useAppStore = create((set, get) => ({
       if (res.success) {
         toast.success('देयक नोंद यशस्वी / Payment recorded!');
         const amt = parseFloat(amount);
+        
+        const paymentRecord = {
+          bill_id: res.data.payment_id,
+          customer_id: customerId,
+          date: new Date().toISOString().split('T')[0],
+          items: [],
+          total_amount: 0,
+          paid_amount: amt,
+          due_amount: -amt,
+          status: 'Paid',
+          timestamp: new Date().toISOString(),
+          is_payment_record: true
+        };
+
+        // Optimistically apply FIFO allocation to current sales state
+        let remainingPayment = amt;
+        const currentSales = get().sales.map(s => ({ ...s }));
+        
+        const pendingSales = currentSales.filter(s => 
+          s.customer_id === customerId && 
+          s.status !== 'Paid' && 
+          !s.is_payment_record && 
+          getSafeDue(s.due_amount) > 0
+        );
+
+        // Sort oldest first (ascending by date then timestamp)
+        pendingSales.sort((a, b) => {
+          const dateA = a.date || '';
+          const dateB = b.date || '';
+          if (dateA !== dateB) return dateA.localeCompare(dateB);
+          return (a.timestamp || '').localeCompare(b.timestamp || '');
+        });
+
+        for (const sale of pendingSales) {
+          if (remainingPayment <= 0) break;
+          const due = getSafeDue(sale.due_amount);
+          const applied = Math.min(due, remainingPayment);
+          const newPaid = getSafeDue(sale.paid_amount) + applied;
+          const newDue = Math.max(0, due - applied);
+          const newStatus = newDue <= 0 ? 'Paid' : 'Partial';
+
+          const sIdx = currentSales.findIndex(s => s.bill_id === sale.bill_id);
+          if (sIdx !== -1) {
+            currentSales[sIdx].paid_amount = newPaid;
+            currentSales[sIdx].due_amount = newDue;
+            currentSales[sIdx].status = newStatus;
+          }
+          remainingPayment -= applied;
+        }
+
+        currentSales.unshift(paymentRecord);
+
         set({
           customers: get().customers.map(c => {
             if (c.customer_id === customerId) {
               return { ...c, current_due: Math.max(0, getSafeDue(c.current_due) - amt) };
             }
             return c;
-          })
+          }),
+          sales: currentSales
         });
+
         invalidateCaches(['customers', 'sales', 'summary']);
         get().refreshSummary();
 
         const settings = get().settings;
         enqueueSyncJob('recordPayment', {
-          customer_id: customerId, amount,
+          payment_id: res.data.payment_id,
+          customer_id: customerId, 
+          amount,
           sheetsIdCustomer: settings.sheetsIdCustomer
-        }, `custpay_${customerId}_${Date.now()}`);
+        }, `custpay_${res.data.payment_id}`);
 
         return true;
       }

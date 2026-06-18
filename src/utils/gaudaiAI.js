@@ -110,8 +110,18 @@ For queries/reports, just respond with a clear, formatted answer. Use ₹ for cu
 
 // ─── OCR SYSTEM PROMPT ──────────────────────────────────────────────
 
-export function buildOCRPrompt(task = '') {
+export function buildOCRPrompt(storeSnapshot, task = '') {
+  const { farmers = [], customers = [] } = storeSnapshot || {};
+  const farmerList = farmers.map(f => `${f.farmer_id}: "${f.name}" (${f.milk_type})`).join(', ');
+  const customerList = customers.map(c => `${c.customer_id}: "${c.shop_name}" (owner: "${c.owner_name}")`).join(', ');
+
   return `You are an OCR specialist for a dairy business. Extract ALL data from this handwritten document or image.
+
+REGISTERED FARMERS:
+${farmerList || 'None'}
+
+REGISTERED CUSTOMERS:
+${customerList || 'None'}
 
 DOCUMENT TYPES YOU MAY ENCOUNTER:
 1. COLLECTION SHEET — Contains farmer names, milk quantity, fat, SNF, dates
@@ -151,6 +161,9 @@ RESPOND WITH STRICT JSON FORMAT:
 \`\`\`
 
 RULES:
+- Translate or transliterate Marathi/Hindi handwriting names/shops into English (e.g. "राजेश गायकवाड" -> "Rajesh Gaikwad", "दिलकश बेकरी" -> "Dilkash Bakery").
+- Fuzzy-match the extracted names against the REGISTERED FARMERS and REGISTERED CUSTOMERS lists above:
+  - If a name is a close match (e.g. phonetically or meaning-wise), use the exact matched name in the "name" field.
 - If the document contains names, shop names, mobile numbers, or addresses without quantities/fat/sales transaction figures, classify it as "CUSTOMER_LIST" (or "FARMER_LIST" if it lists farmers).
 - If the document contains milk collections (names with quantity, fat, SNF), classify it as "COLLECTION".
 - If the document contains sales (names with products, quantity, price, totals), classify it as "SALES".
@@ -163,8 +176,18 @@ RULES:
 - Set confidence based on handwriting clarity (0.0 = unreadable, 1.0 = perfectly clear)`;
 }
 
-export function buildExcelPrompt(task = '') {
+export function buildExcelPrompt(storeSnapshot, task = '') {
+  const { farmers = [], customers = [] } = storeSnapshot || {};
+  const farmerList = farmers.map(f => `${f.farmer_id}: "${f.name}" (${f.milk_type})`).join(', ');
+  const customerList = customers.map(c => `${c.customer_id}: "${c.shop_name}" (owner: "${c.owner_name}")`).join(', ');
+
   return `You are a data extraction specialist for a dairy business. Map the uploaded spreadsheet JSON data into structured entities.
+
+REGISTERED FARMERS:
+${farmerList || 'None'}
+
+REGISTERED CUSTOMERS:
+${customerList || 'None'}
 
 DOCUMENT TYPES YOU MAY ENCOUNTER:
 1. COLLECTION SHEET — Contains farmer names, milk quantity, fat, SNF, dates
@@ -204,6 +227,8 @@ RESPOND WITH STRICT JSON FORMAT:
 \`\`\`
 
 RULES:
+- Translate or transliterate Marathi/Hindi spreadsheet names/shops into English.
+- Fuzzy-match the extracted names against the REGISTERED FARMERS and REGISTERED CUSTOMERS lists above. Use the exact matched name in the "name" field.
 - If the spreadsheet contains names, shop names, mobile numbers, or addresses without quantities/fat/sales transaction figures, classify it as "CUSTOMER_LIST" (or "FARMER_LIST" if it lists farmers).
 - If the spreadsheet contains milk collections (names with quantity, fat, SNF), classify it as "COLLECTION".
 - If the spreadsheet contains sales (names with products, quantity, price, totals), classify it as "SALES".
@@ -244,7 +269,7 @@ export async function processConversation(conversationHistory, storeSnapshot) {
  * Returns extracted data for user confirmation.
  */
 export async function processOCRImage(imageBase64, mimeType, storeSnapshot, task = '') {
-  const ocrPrompt = buildOCRPrompt(task);
+  const ocrPrompt = buildOCRPrompt(storeSnapshot, task);
 
   // Step 1: Extract raw data from image
   const ocrResult = await processImageWithGemini(ocrPrompt, imageBase64, mimeType);
@@ -320,7 +345,7 @@ export async function processExcelFile(file, storeSnapshot, task = '') {
   const excelJsonStr = JSON.stringify(slicedJson, null, 2);
 
   // Step 2: Build instruction prompt
-  const excelPrompt = buildExcelPrompt(task);
+  const excelPrompt = buildExcelPrompt(storeSnapshot, task);
 
   // Step 3: Run mapper on Gemini
   const geminiResult = await processExcelWithGemini(excelPrompt, excelJsonStr);
@@ -621,7 +646,7 @@ export async function executeAction(action, appStore) {
 
         // Handle paid/due amount based on is_paid boolean or explicit numbers
         let paidAmt = 0;
-        if (data.hasOwnProperty('paid_amount') || data.hasOwnProperty('paid')) {
+        if (Object.prototype.hasOwnProperty.call(data, 'paid_amount') || Object.prototype.hasOwnProperty.call(data, 'paid')) {
           paidAmt = parseFloat(data.paid_amount || data.paid || 0) || 0;
         } else if (data.is_paid === true) {
           paidAmt = totalAmt;
