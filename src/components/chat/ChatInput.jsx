@@ -1,25 +1,80 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useChatStore } from '../../store/chatStore';
-import { Send, Image, Mic, MicOff, X } from 'lucide-react';
+import { Send, Paperclip, Mic, MicOff, X, FileText, FileSpreadsheet, Image } from 'lucide-react';
 
 /**
- * ChatInput — Message input with file upload, voice input, and send functionality.
+ * Accepted file types for all supported document formats.
+ */
+const ACCEPTED_TYPES = [
+  'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'text/csv',
+  'application/vnd.oasis.opendocument.spreadsheet'
+];
+
+const ACCEPTED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'xlsx', 'xls', 'csv', 'ods'];
+const MAX_FILE_SIZE_MB = 20;
+
+/**
+ * Return icon component and label for a given file.
+ */
+function getFileInfo(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (['xlsx', 'xls', 'csv', 'ods'].includes(ext)) {
+    return { icon: FileSpreadsheet, label: ext.toUpperCase(), color: '#16a34a' };
+  }
+  if (ext === 'pdf') {
+    return { icon: FileText, label: 'PDF', color: '#dc2626' };
+  }
+  return { icon: Image, label: 'IMG', color: '#2563eb' };
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function validateFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const isAllowedExt = ACCEPTED_EXTENSIONS.includes(ext);
+  if (!ACCEPTED_TYPES.includes(file.type) && !isAllowedExt) {
+    return `"${file.name}" is not a supported file type (JPG, PNG, WebP, PDF, XLSX, XLS, CSV, ODS).`;
+  }
+  if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+    return `"${file.name}" is too large (max ${MAX_FILE_SIZE_MB} MB).`;
+  }
+  return null;
+}
+
+/**
+ * ChatInput — Message input with multi-file upload, drag-and-drop, voice input, and send.
  */
 export default function ChatInput() {
-  const { sendMessage, sendImage, isProcessing } = useChatStore();
+  const { sendMessage, sendFiles, isProcessing } = useChatStore();
   const [text, setText] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [filePreview, setFilePreview] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [filePreviews, setFilePreviews] = useState({});
   const [isRecording, setIsRecording] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
+  const dragCounterRef = useRef(0);
 
-  // ─── Text Input Handling ──────────────────────────────────────
+  // Clean up object URLs on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(filePreviews).forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [filePreviews]);
+
+  // ─── Text Input ──────────────────────────────────────────────────
 
   const handleTextChange = (e) => {
     setText(e.target.value);
-    // Auto-resize textarea
     const el = e.target;
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 100) + 'px';
@@ -32,59 +87,109 @@ export default function ChatInput() {
     }
   };
 
-  // ─── File Upload ──────────────────────────────────────────────
+  // ─── File Management ─────────────────────────────────────────────
 
-  const clearFile = useCallback(() => {
-    if (filePreview) URL.revokeObjectURL(filePreview);
-    setSelectedFile(null);
-    setFilePreview(null);
+  const addFiles = useCallback((newFiles) => {
+    const validFiles = [];
+    const errors = [];
+
+    for (const file of newFiles) {
+      const error = validateFile(file);
+      if (error) {
+        errors.push(error);
+      } else {
+        validFiles.push(file);
+      }
+    }
+
+    if (errors.length > 0) {
+      alert(errors.join('\n'));
+    }
+
+    if (validFiles.length === 0) return;
+
+    setSelectedFiles(prev => {
+      // Deduplicate by name+size
+      const existing = new Set(prev.map(f => `${f.name}_${f.size}`));
+      const unique = validFiles.filter(f => !existing.has(`${f.name}_${f.size}`));
+      return [...prev, ...unique];
+    });
+
+    // Generate image previews
+    const newPreviews = {};
+    for (const file of validFiles) {
+      if (file.type.startsWith('image/')) {
+        newPreviews[`${file.name}_${file.size}`] = URL.createObjectURL(file);
+      }
+    }
+    if (Object.keys(newPreviews).length > 0) {
+      setFilePreviews(prev => ({ ...prev, ...newPreviews }));
+    }
+  }, []);
+
+  const removeFile = useCallback((index) => {
+    setSelectedFiles(prev => {
+      const file = prev[index];
+      const key = `${file.name}_${file.size}`;
+      setFilePreviews(p => {
+        if (p[key]) URL.revokeObjectURL(p[key]);
+        const next = { ...p };
+        delete next[key];
+        return next;
+      });
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
+
+  const clearFiles = useCallback(() => {
+    Object.values(filePreviews).forEach(url => URL.revokeObjectURL(url));
+    setSelectedFiles([]);
+    setFilePreviews({});
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [filePreview]);
+  }, [filePreviews]);
 
   const handleFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    addFiles(files);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
-    // Validate file type
-    const allowed = [
-      'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'text/csv'
-    ];
-    const ext = file.name.split('.').pop().toLowerCase();
-    const isAllowedExt = ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'xlsx', 'xls', 'csv'].includes(ext);
+  // ─── Drag & Drop ─────────────────────────────────────────────────
 
-    if (!allowed.includes(file.type) && !isAllowedExt) {
-      alert('Please upload JPG, PNG, WebP, PDF, XLSX, XLS, or CSV files only.');
-      return;
-    }
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    dragCounterRef.current++;
+    setIsDragOver(true);
+  };
 
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      alert('File too large. Maximum 10MB allowed.');
-      return;
-    }
-
-    setSelectedFile(file);
-
-    // Generate preview for images
-    if (file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      setFilePreview(url);
-    } else {
-      setFilePreview(null);
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false);
     }
   };
 
-  // ─── Send Message ──────────────────────────────────────────────
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
 
-  const handleSend = useCallback(() => {
+  const handleDrop = (e) => {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files || []);
+    addFiles(files);
+  };
+
+  // ─── Send ────────────────────────────────────────────────────────
+
+  const handleSend = useCallback(async () => {
     if (isProcessing) return;
 
-    if (selectedFile) {
-      sendImage(selectedFile, text);
-      clearFile();
+    if (selectedFiles.length > 0) {
+      await sendFiles(selectedFiles, text.trim());
+      clearFiles();
       setText('');
       return;
     }
@@ -96,22 +201,13 @@ export default function ChatInput() {
         textareaRef.current.style.height = 'auto';
       }
     }
-  }, [text, selectedFile, isProcessing, sendMessage, sendImage, clearFile]);
+  }, [text, selectedFiles, isProcessing, sendMessage, sendFiles, clearFiles]);
 
-  const formatFileSize = (bytes) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
-
-  // ─── Voice Input (Web Speech API) ─────────────────────────────
+  // ─── Voice Input ─────────────────────────────────────────────────
 
   const toggleVoiceInput = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
+    if (isRecording) stopRecording();
+    else startRecording();
   };
 
   const startRecording = () => {
@@ -124,11 +220,9 @@ export default function ChatInput() {
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = true;
-    recognition.lang = 'en-IN'; // English (India) — also picks up Hindi/Marathi words
+    recognition.lang = 'en-IN';
 
-    recognition.onstart = () => {
-      setIsRecording(true);
-    };
+    recognition.onstart = () => setIsRecording(true);
 
     recognition.onresult = (event) => {
       const transcript = Array.from(event.results)
@@ -142,9 +236,7 @@ export default function ChatInput() {
       setIsRecording(false);
     };
 
-    recognition.onend = () => {
-      setIsRecording(false);
-    };
+    recognition.onend = () => setIsRecording(false);
 
     recognition.start();
     recognitionRef.current = recognition;
@@ -158,57 +250,91 @@ export default function ChatInput() {
     setIsRecording(false);
   };
 
-  // ─── Voice support check ──────────────────────────────────────
   const hasVoiceSupport = typeof window !== 'undefined' &&
     (window.SpeechRecognition || window.webkitSpeechRecognition);
 
-  const canSend = (text.trim().length > 0 || selectedFile) && !isProcessing;
+  const canSend = (text.trim().length > 0 || selectedFiles.length > 0) && !isProcessing;
 
   return (
-    <div className="gaudai-input-area">
-      {/* File preview strip */}
-      {selectedFile && (
-        <div className="gaudai-file-preview">
-          {filePreview ? (
-            <img src={filePreview} alt="Preview" />
-          ) : (
-            <div style={{
-              width: 40, height: 40, borderRadius: 6,
-              background: '#F3F4F6', display: 'flex',
-              alignItems: 'center', justifyContent: 'center',
-              fontSize: 18
-            }}>
-              {selectedFile.name.endsWith('.xlsx') || selectedFile.name.endsWith('.xls') || selectedFile.name.endsWith('.csv') ? '📊' : '📄'}
-            </div>
-          )}
-          <div className="file-info">
-            <div className="name">{selectedFile.name}</div>
-            <div className="size">{formatFileSize(selectedFile.size)}</div>
+    <div
+      className={`gaudai-input-area ${isDragOver ? 'drag-over' : ''}`}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* ─── Drag Overlay ───────────────────────────────────────── */}
+      {isDragOver && (
+        <div className="gaudai-drop-overlay">
+          <div className="gaudai-drop-overlay-inner">
+            <Paperclip size={28} />
+            <span>Drop files to upload</span>
+            <p>PDF, XLSX, XLS, CSV, ODS, JPG, PNG, WebP</p>
           </div>
-          <button className="remove-btn" onClick={clearFile}>
-            <X size={14} />
-          </button>
         </div>
       )}
 
-      {/* Input row */}
+      {/* ─── File Queue Strip ──────────────────────────────────── */}
+      {selectedFiles.length > 0 && (
+        <div className="gaudai-file-queue">
+          <div className="gaudai-file-queue-scroll">
+            {selectedFiles.map((file, index) => {
+              const key = `${file.name}_${file.size}`;
+              const preview = filePreviews[key];
+              const { icon: FileIcon, label, color } = getFileInfo(file);
+              return (
+                <div key={key} className="gaudai-file-chip">
+                  {preview ? (
+                    <img src={preview} alt={file.name} className="gaudai-file-chip-img" />
+                  ) : (
+                    <div className="gaudai-file-chip-icon" style={{ color }}>
+                      <FileIcon size={18} />
+                      <span className="gaudai-file-chip-badge" style={{ background: color }}>{label}</span>
+                    </div>
+                  )}
+                  <div className="gaudai-file-chip-info">
+                    <div className="gaudai-file-chip-name" title={file.name}>{file.name}</div>
+                    <div className="gaudai-file-chip-size">{formatFileSize(file.size)}</div>
+                  </div>
+                  <button
+                    className="gaudai-file-chip-remove"
+                    onClick={() => removeFile(index)}
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          {selectedFiles.length > 1 && (
+            <div className="gaudai-file-queue-footer">
+              <span>{selectedFiles.length} files selected</span>
+              <button onClick={clearFiles} className="gaudai-file-queue-clear">Clear all</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Input Row ─────────────────────────────────────────── */}
       <div className="gaudai-input-row">
         {/* File upload button */}
         <button
           className="gaudai-input-btn"
           onClick={() => fileInputRef.current?.click()}
-          title="Upload image or document"
+          title="Upload files (PDF, XLSX, CSV, ODS, images)"
           disabled={isProcessing}
         >
-          <Image size={18} />
+          <Paperclip size={18} />
         </button>
 
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf,.xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+          accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf,.pdf,.xlsx,.xls,.csv,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.oasis.opendocument.spreadsheet"
           style={{ display: 'none' }}
           onChange={handleFileSelect}
+          multiple
         />
 
         {/* Text input */}
@@ -217,7 +343,13 @@ export default function ChatInput() {
           value={text}
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}
-          placeholder={isProcessing ? 'AI is thinking...' : 'Type a message or upload an image...'}
+          placeholder={
+            isProcessing
+              ? 'AI is processing...'
+              : selectedFiles.length > 0
+              ? 'Add a task or question about these files...'
+              : 'Type a message or drop files here...'
+          }
           rows={1}
           disabled={isProcessing}
         />
@@ -244,6 +376,13 @@ export default function ChatInput() {
           <Send size={18} />
         </button>
       </div>
+
+      {/* ─── Supported formats hint ─────────────────────────────── */}
+      {selectedFiles.length === 0 && !isProcessing && (
+        <div className="gaudai-input-hint">
+          Supports PDF, Excel (XLSX/XLS/ODS), CSV, and images · Drag & drop or click 📎
+        </div>
+      )}
     </div>
   );
 }

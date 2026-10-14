@@ -265,3 +265,36 @@ export async function processExcelWithGemini(prompt, excelJsonStr) {
 
   return callGeminiWithFallback(body);
 }
+
+/**
+ * Process a PDF file using Gemini multimodal (native PDF understanding).
+ * Gemini 1.5+ can read text-based and scanned PDFs directly as inline_data.
+ *
+ * @param {string} prompt - Instruction prompt for data extraction
+ * @param {string} pdfBase64 - Base64-encoded PDF data (no data: prefix)
+ * @returns {Promise<string>} Gemini response with extracted/structured data
+ */
+export async function processPDFWithGemini(prompt, pdfBase64) {
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inline_data: {
+              mime_type: 'application/pdf',
+              data: pdfBase64
+            }
+          }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      topP: 0.8,
+      maxOutputTokens: 8192
+    }
+  };
+
+  return callGeminiWithFallback(body);
+}

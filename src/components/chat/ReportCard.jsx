@@ -1,8 +1,12 @@
+import { Download } from 'lucide-react';
+import { useChatStore } from '../../store/chatStore';
+
 /**
  * ReportCard — Renders formatted reports inline in chat messages.
  * Parses markdown-style tables from AI responses.
  */
 export default function ReportCard({ content }) {
+  const { downloadReport } = useChatStore();
   if (!content) return null;
 
   // Parse the report content into sections
@@ -13,17 +17,45 @@ export default function ReportCard({ content }) {
       {sections.map((section, i) => {
         if (section.type === 'heading') {
           return (
-            <h4 key={i} style={{
-              margin: '0 0 8px',
-              fontSize: '13px',
-              fontWeight: 700,
-              color: '#0F6E56',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              {section.text}
-            </h4>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <h4 style={{
+                margin: 0,
+                fontSize: '13px',
+                fontWeight: 700,
+                color: '#0F6E56',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                {section.text}
+              </h4>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  onClick={() => downloadReport('xlsx')}
+                  title="Download as Excel"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 3,
+                    padding: '2px 7px', fontSize: 10, borderRadius: 5,
+                    background: '#16a34a', color: '#fff', border: 'none',
+                    cursor: 'pointer', fontWeight: 600
+                  }}
+                >
+                  <Download size={10} /> XLSX
+                </button>
+                <button
+                  onClick={() => downloadReport('csv')}
+                  title="Download as CSV"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 3,
+                    padding: '2px 7px', fontSize: 10, borderRadius: 5,
+                    background: '#2563eb', color: '#fff', border: 'none',
+                    cursor: 'pointer', fontWeight: 600
+                  }}
+                >
+                  <Download size={10} /> CSV
+                </button>
+              </div>
+            </div>
           );
         }
 

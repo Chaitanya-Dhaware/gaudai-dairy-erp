@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { processConversation, processOCRImage, processExcelFile, executeAction, generateLocalReport } from '../utils/gaudaiAI';
+import { processConversation, processOCRImage, processExcelFile, processPDFFile, executeAction, generateLocalReport, exportToExcel, exportToCSV } from '../utils/gaudaiAI';
 import { useAppStore } from './appStore';
 
 /**
@@ -37,8 +37,10 @@ export const useChatStore = create((set, get) => ({
   isOpen: false,
   messages: [],
   isProcessing: false,
-  pendingAction: null,     // Action awaiting user confirmation
-  hasUnread: false,        // Unread notification indicator
+  pendingAction: null,          // Action awaiting user confirmation
+  pendingSpreadsheet: null,     // Active spreadsheet preview & column mapping data
+  activeFileContext: null,      // Context of uploaded file for follow-up questions
+  hasUnread: false,             // Unread notification indicator
 
   // ─── UI Actions ────────────────────────────────────────────────
 
@@ -51,9 +53,26 @@ export const useChatStore = create((set, get) => ({
 
   closeChat: () => set({ isOpen: false }),
 
+  dismissPendingSpreadsheet: () => set({ pendingSpreadsheet: null }),
+
+  addAssistantMessage: (content, type = 'message') => {
+    const aiMsg = {
+      id: msgId(),
+      role: 'assistant',
+      content,
+      timestamp: Date.now(),
+      type
+    };
+    set(state => ({
+      messages: [...state.messages, aiMsg]
+    }));
+  },
+
   clearChat: () => set({
     messages: [],
     pendingAction: null,
+    pendingSpreadsheet: null,
+    activeFileContext: null,
     isProcessing: false
   }),
 
@@ -106,8 +125,8 @@ export const useChatStore = create((set, get) => ({
         text: m.content
       }));
 
-      // Process through Gemini AI
-      const result = await processConversation(recentMessages, snapshot);
+      // Process through Gemini AI (with active file context if present)
+      const result = await processConversation(recentMessages, snapshot, get().activeFileContext);
 
       const aiMsg = {
         id: msgId(),
@@ -141,25 +160,32 @@ export const useChatStore = create((set, get) => ({
   },
 
   /**
-   * Send an image for OCR processing.
+   * Send a file (image, PDF, or spreadsheet) for AI processing.
+   * Routes to the appropriate processing pipeline based on file type.
    */
   sendImage: async (file, task = '') => {
     if (!file || get().isProcessing) return;
 
-    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv') ||
+    const ext = file.name.split('.').pop().toLowerCase();
+    const isExcel = ['xlsx', 'xls', 'csv', 'ods'].includes(ext) ||
       file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
       file.type === 'application/vnd.ms-excel' ||
-      file.type === 'text/csv';
+      file.type === 'text/csv' ||
+      file.type === 'application/vnd.oasis.opendocument.spreadsheet';
+    const isPDF = ext === 'pdf' || file.type === 'application/pdf';
 
     // Create preview message
-    const previewUrl = isExcel ? null : URL.createObjectURL(file);
+    const previewUrl = (!isExcel && !isPDF) ? URL.createObjectURL(file) : null;
+    const fileIcon = isPDF ? '📄' : isExcel ? '📊' : '📷';
     const userMsg = {
       id: msgId(),
       role: 'user',
-      content: `${isExcel ? '📊' : '📷'} Uploaded: ${file.name}${task ? `\n\nTask: ${task}` : ''}`,
+      content: `${fileIcon} Uploaded: **${file.name}** (${formatFileSize(file.size)})${task ? `\n\nTask: ${task}` : ''}`,
       timestamp: Date.now(),
-      type: isExcel ? 'file' : 'image',
-      imageUrl: previewUrl
+      type: isPDF ? 'pdf' : isExcel ? 'file' : 'image',
+      imageUrl: previewUrl,
+      fileName: file.name,
+      fileSize: file.size
     };
 
     set(state => ({
@@ -172,7 +198,9 @@ export const useChatStore = create((set, get) => ({
       const snapshot = getStoreSnapshot();
       let result;
 
-      if (isExcel) {
+      if (isPDF) {
+        result = await processPDFFile(file, snapshot, task);
+      } else if (isExcel) {
         result = await processExcelFile(file, snapshot, task);
       } else {
         // Convert file to base64 for OCR
@@ -195,6 +223,13 @@ export const useChatStore = create((set, get) => ({
         messages: [...state.messages, aiMsg],
         isProcessing: false,
         pendingAction: result.action || null,
+        pendingSpreadsheet: result.type === 'spreadsheet_preview' ? result.previewData : state.pendingSpreadsheet,
+        activeFileContext: {
+          fileName: file.name,
+          fileType: isPDF ? 'pdf' : isExcel ? 'spreadsheet' : 'image',
+          fileSize: file.size,
+          contentSnippet: result.contentSnippet || result.message
+        },
         hasUnread: !state.isOpen
       }));
     } catch (error) {
@@ -202,7 +237,7 @@ export const useChatStore = create((set, get) => ({
       const errorMsg = {
         id: msgId(),
         role: 'assistant',
-        content: `⚠️ Failed to process file: ${error.message}. Please try again.`,
+        content: `⚠️ Failed to process **${file.name}**: ${error.message}. Please try again.`,
         timestamp: Date.now(),
         type: 'error'
       };
@@ -210,6 +245,50 @@ export const useChatStore = create((set, get) => ({
         messages: [...state.messages, errorMsg],
         isProcessing: false
       }));
+    }
+  },
+
+  /**
+   * Send multiple files sequentially, processing each one.
+   * Files are queued and processed one at a time.
+   */
+  sendFiles: async (files, task = '') => {
+    if (!files || files.length === 0 || get().isProcessing) return;
+
+    for (const file of files) {
+      await get().sendImage(file, task);
+    }
+  },
+
+  /**
+   * Download a report from the last assistant report message.
+   * Exports to XLSX or CSV based on format parameter.
+   */
+  downloadReport: (format = 'xlsx') => {
+    const messages = get().messages;
+    // Find the last report message
+    const reportMsg = [...messages].reverse().find(m => m.type === 'report' && m.role === 'assistant');
+    if (!reportMsg) return;
+
+    // Parse simple table from report content
+    const lines = reportMsg.content.split('\n').filter(l => l.startsWith('|') && l.endsWith('|'));
+    if (lines.length < 2) return;
+
+    const headers = lines[0].split('|').filter(c => c.trim()).map(c => c.trim());
+    const rows = lines.slice(2).map(line => {
+      const cells = line.split('|').filter(c => c.trim()).map(c => c.trim().replace(/\*\*/g, ''));
+      const row = {};
+      headers.forEach((h, i) => { row[h] = cells[i] || ''; });
+      return row;
+    });
+
+    if (rows.length === 0) return;
+
+    const filename = `gaudai_report_${new Date().toLocaleDateString('en-CA')}`;
+    if (format === 'csv') {
+      exportToCSV(rows, filename);
+    } else {
+      exportToExcel(rows, filename);
     }
   },
 
@@ -302,6 +381,15 @@ export const useChatStore = create((set, get) => ({
 }));
 
 // ─── HELPER FUNCTIONS ──────────────────────────────────────────────
+
+/**
+ * Format file size in human-readable form.
+ */
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
 
 /**
  * Convert a File to base64 string (without data: prefix).

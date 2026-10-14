@@ -10,7 +10,7 @@
  * - Query answering from Firestore data
  */
 
-import { chatWithGemini, processImageWithGemini, processExcelWithGemini } from './gemini';
+import { chatWithGemini, processImageWithGemini, processExcelWithGemini, processPDFWithGemini } from './gemini';
 import * as XLSX from 'xlsx';
 
 // ─── SYSTEM PROMPT BUILDER ──────────────────────────────────────────
@@ -241,6 +241,26 @@ RULES:
 // ─── INTENT PROCESSING ──────────────────────────────────────────────
 
 /**
+ * Check if a task is an analytical question or summarization request.
+ */
+export function isAnalyticalQuery(task = '') {
+  if (!task || !task.trim()) return false;
+  const lower = task.toLowerCase().trim();
+  if (lower.startsWith('import') || lower.includes('import into') || lower.includes('save to database') || lower.includes('add to erp')) {
+    return false;
+  }
+  const keywords = [
+    'summar', 'calculat', 'total', 'highest', 'lowest', 'find', 'which', 'who',
+    'average', 'compare', 'duplicate', 'missing', 'how many', 'how much',
+    'what is', 'show me', 'report', 'explain', 'difference', 'stat', 'convert',
+    'table', 'list', 'expense', 'revenue', 'profit', 'analyze', 'analysis',
+    'extract', 'invoice', 'bill', 'check', 'combine', 'clean',
+    'तपशील', 'एकूण', 'कोणी', 'कमी', 'जास्त', 'फरक', 'माहिती'
+  ];
+  return keywords.some(kw => lower.includes(kw));
+}
+
+/**
  * Process a user message through the AI engine.
  * Returns structured response with optional actions.
  */
@@ -256,10 +276,23 @@ export async function processUserMessage(text, storeSnapshot) {
 }
 
 /**
- * Process a user message with conversation history for context.
+ * Process a user message with conversation history and optional active uploaded file context.
+ * Understands follow-up questions about uploaded files without re-uploading.
  */
-export async function processConversation(conversationHistory, storeSnapshot) {
-  const systemPrompt = buildSystemPrompt(storeSnapshot);
+export async function processConversation(conversationHistory, storeSnapshot, activeFileContext = null) {
+  let systemPrompt = buildSystemPrompt(storeSnapshot);
+
+  if (activeFileContext) {
+    systemPrompt += `\n\n══════════════════════════════════════════════════════════
+ACTIVE UPLOADED FILE CONTEXT:
+The user previously uploaded the file "${activeFileContext.fileName}" (${activeFileContext.fileType || 'document'}).
+Data summary / rows from this file:
+${activeFileContext.contentSnippet || ''}
+
+You can answer follow-up questions, run calculations, compare details, or summarize this uploaded file without asking the user to re-upload it.
+══════════════════════════════════════════════════════════`;
+  }
+
   const aiResponse = await chatWithGemini(systemPrompt, conversationHistory);
   return parseAIResponse(aiResponse);
 }
@@ -310,7 +343,8 @@ export async function processOCRImage(imageBase64, mimeType, storeSnapshot, task
 }
 
 /**
- * Helper to parse Excel array buffer into JSON client-side.
+ * Helper to parse Excel/ODS/CSV array buffer into JSON client-side.
+ * Supports multi-sheet workbooks — returns { sheetName: [...rows] } map.
  */
 export async function parseExcelData(file) {
   return new Promise((resolve, reject) => {
@@ -319,11 +353,15 @@ export async function parseExcelData(file) {
       try {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        // Convert sheet to JSON array of objects
-        const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-        resolve(json);
+
+        // Build a map of all sheets
+        const sheetsMap = {};
+        for (const sheetName of workbook.SheetNames) {
+          const worksheet = workbook.Sheets[sheetName];
+          sheetsMap[sheetName] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+        }
+
+        resolve(sheetsMap);
       } catch (err) {
         reject(err);
       }
@@ -334,23 +372,140 @@ export async function parseExcelData(file) {
 }
 
 /**
+ * Export data to an Excel (.xlsx) file and trigger browser download.
+ * @param {Array} rows - Array of objects (each object = one row)
+ * @param {string} filename - Download filename (without extension)
+ */
+export function exportToExcel(rows, filename = 'gaudai_report') {
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Report');
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+}
+
+/**
+ * Export data to CSV and trigger browser download.
+ * @param {Array} rows - Array of objects
+ * @param {string} filename - Download filename (without extension)
+ */
+export function exportToCSV(rows, filename = 'gaudai_report') {
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const csv = XLSX.utils.sheet_to_csv(ws);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Build analysis prompt for analytical spreadsheet questions.
+ */
+export function buildExcelAnalysisPrompt(storeSnapshot, task = '') {
+  const { farmers = [], customers = [] } = storeSnapshot || {};
+  return `You are Gaudai AI, an intelligent dairy operations and analytics assistant.
+The user uploaded a spreadsheet and asked: "${task}".
+
+REGISTERED FARMERS:
+${farmers.slice(0, 30).map(f => `${f.farmer_id}: ${f.name}`).join(', ') || 'None'}
+
+REGISTERED CUSTOMERS:
+${customers.slice(0, 30).map(c => `${c.customer_id}: ${c.shop_name}`).join(', ') || 'None'}
+
+Spreadsheet data (JSON) is attached.
+INSTRUCTIONS:
+1. Answer the user's specific request accurately based on the spreadsheet data.
+2. If calculating totals, sums, or averages (e.g. total milk collected, payable amounts, expenses), perform the exact arithmetic on the rows provided.
+3. If searching for highest/lowest (e.g. farmer with highest supply), explicitly state the name, quantity, and details.
+4. If checking for duplicates or missing values, identify the exact row numbers and problematic entries.
+5. Format key data points or comparison rows as clean Markdown tables (| Header 1 | Header 2 | ...) so the user can download them as an Excel/CSV file with one click.
+6. Provide actionable business insights for the dairy owner.`;
+}
+
+/**
+ * Build analysis prompt for PDF document questions and summarization.
+ */
+export function buildPDFAnalysisPrompt(storeSnapshot, task = '') {
+  const { farmers = [], customers = [] } = storeSnapshot || {};
+  return `You are Gaudai AI, an intelligent dairy ERP analyst.
+The user uploaded a PDF document and asked: "${task}".
+
+REGISTERED FARMERS:
+${farmers.slice(0, 30).map(f => `${f.farmer_id}: ${f.name}`).join(', ') || 'None'}
+
+REGISTERED CUSTOMERS:
+${customers.slice(0, 30).map(c => `${c.customer_id}: ${c.shop_name}`).join(', ') || 'None'}
+
+INSTRUCTIONS:
+1. Read the attached PDF thoroughly (including printed text, tables, invoices, bills, milk slips, and payment statements).
+2. Answer the user's specific request accurately based on the actual text and tables in the PDF.
+3. If tabular data (like collections, invoices, milk entries, expenses) is present, extract it into a clean Markdown table with headers (| Col 1 | Col 2 | ...). The user will be able to export this table directly to Excel/CSV.
+4. Calculate totals, verify arithmetic consistency, and point out any discrepancies, missing fields, or duplicate entries.
+5. Provide a clear summary of key dates, parties, and figures.`;
+}
+
+/**
  * Process Excel spreadsheet data using Gemini.
+ * Handles multi-sheet workbooks by concatenating all sheets into the prompt.
+ * Routes to:
+ * - Analytical Report (with download buttons) if task is a question/analysis
+ * - Spreadsheet Preview Card if no task or preview requested
+ * - OCR / ERP Confirmation if task is an explicit import
  */
 export async function processExcelFile(file, storeSnapshot, task = '') {
-  // Step 1: Parse sheet client-side
-  const excelJson = await parseExcelData(file);
-  
-  // Limit to first 200 rows to avoid token limit and maintain good response time
-  const slicedJson = excelJson.slice(0, 200);
-  const excelJsonStr = JSON.stringify(slicedJson, null, 2);
+  // Step 1: Parse all sheets client-side
+  const sheetsMap = await parseExcelData(file);
 
-  // Step 2: Build instruction prompt
+  // Step 2: Build combined JSON string (all sheets, max 200 rows each)
+  const sheetEntries = Object.entries(sheetsMap);
+  let excelJsonStr;
+  if (sheetEntries.length === 1) {
+    const rows = sheetEntries[0][1].slice(0, 200);
+    excelJsonStr = JSON.stringify(rows, null, 2);
+  } else {
+    // Multi-sheet: include sheet names as context
+    const combined = {};
+    for (const [sheetName, rows] of sheetEntries) {
+      combined[sheetName] = rows.slice(0, 100);
+    }
+    excelJsonStr = JSON.stringify(combined, null, 2);
+  }
+
+  // Branch A: Analytical Query / Question / Report
+  if (isAnalyticalQuery(task)) {
+    const analysisPrompt = buildExcelAnalysisPrompt(storeSnapshot, task);
+    const geminiResult = await processExcelWithGemini(analysisPrompt, excelJsonStr);
+    return {
+      type: 'report',
+      message: geminiResult,
+      contentSnippet: excelJsonStr.slice(0, 3000),
+      action: null
+    };
+  }
+
+  // Branch B: If user uploaded without an explicit import instruction -> show Spreadsheet Preview Card
+  const isExplicitImport = task && (task.toLowerCase().includes('import') || task.toLowerCase().includes('save to'));
+  if (!isExplicitImport) {
+    const totalRows = sheetEntries.reduce((sum, [, r]) => sum + (r?.length || 0), 0);
+    return {
+      type: 'spreadsheet_preview',
+      message: `📊 Loaded **${file.name}** (${sheetEntries.length} sheet${sheetEntries.length > 1 ? 's' : ''}, ${totalRows} rows).\n\nYou can review rows, map columns to live ERP modules, or ask me any question about the data!`,
+      previewData: {
+        fileName: file.name,
+        fileSize: file.size,
+        sheetsMap
+      },
+      contentSnippet: excelJsonStr.slice(0, 3000),
+      action: null
+    };
+  }
+
+  // Branch C: Explicit Import Request -> Map to structured entries
   const excelPrompt = buildExcelPrompt(storeSnapshot, task);
-
-  // Step 3: Run mapper on Gemini
   const geminiResult = await processExcelWithGemini(excelPrompt, excelJsonStr);
 
-  // Step 4: Parse extracted JSON from response
   let extracted;
   try {
     const jsonMatch = geminiResult.match(/```json\s*([\s\S]*?)```/);
@@ -364,23 +519,96 @@ export async function processExcelFile(file, storeSnapshot, task = '') {
       type: 'excel_raw',
       message: 'I processed the spreadsheet but could not map it to structured records. Here is the raw response:',
       rawText: geminiResult,
+      contentSnippet: excelJsonStr.slice(0, 3000),
       action: null
     };
   }
 
-  // Step 5: Validate entries
+  // Step 6: Validate entries
   const validated = validateOCRData(extracted, storeSnapshot);
 
-  // Step 6: Return structured response
   return {
-    type: 'ocr_result', // Match OCR UI render path
+    type: 'ocr_result',
     message: buildOCRResponseMessage(validated),
     data: validated,
+    contentSnippet: excelJsonStr.slice(0, 3000),
     action: {
       type: 'OCR_CONFIRM',
       data: validated
     }
   };
+}
+
+/**
+ * Process a PDF file through Gemini's native PDF understanding.
+ * Works for both text-based PDFs and scanned PDFs (OCR).
+ */
+export async function processPDFFile(file, storeSnapshot, task = '') {
+  // Step 1: Convert PDF to base64
+  const base64 = await fileToBase64PDF(file);
+
+  // Branch A: Analytical Query / Question / Summarization
+  if (isAnalyticalQuery(task)) {
+    const analysisPrompt = buildPDFAnalysisPrompt(storeSnapshot, task);
+    const geminiResult = await processPDFWithGemini(analysisPrompt, base64);
+    return {
+      type: 'report',
+      message: geminiResult,
+      contentSnippet: `PDF Document (${file.name}):\n${geminiResult.slice(0, 2500)}`,
+      action: null
+    };
+  }
+
+  // Branch B: Document OCR extraction (invoices, collection sheets, payment receipts)
+  const ocrPrompt = buildOCRPrompt(storeSnapshot, task);
+  const geminiResult = await processPDFWithGemini(ocrPrompt, base64);
+
+  // Step 4: Parse extracted JSON from response
+  let extracted;
+  try {
+    const jsonMatch = geminiResult.match(/```json\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      extracted = JSON.parse(jsonMatch[1]);
+    } else {
+      extracted = JSON.parse(geminiResult);
+    }
+  } catch {
+    return {
+      type: 'pdf_raw',
+      message: `I read the PDF **${file.name}** but couldn't extract structured records. Here's what I found:\n\n${geminiResult}`,
+      contentSnippet: `PDF Document (${file.name}):\n${geminiResult.slice(0, 2500)}`,
+      action: null
+    };
+  }
+
+  // Step 5: Validate and match against store
+  const validated = validateOCRData(extracted, storeSnapshot);
+
+  return {
+    type: 'ocr_result',
+    message: buildOCRResponseMessage(validated),
+    data: validated,
+    contentSnippet: `PDF Document (${file.name}): ${validated.document_type} with ${validated.entries?.length || 0} entries`,
+    action: {
+      type: 'OCR_CONFIRM',
+      data: validated
+    }
+  };
+}
+
+/**
+ * Convert a File to base64 string (strips the data URL prefix).
+ */
+function fileToBase64PDF(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 // ─── OCR VALIDATION ─────────────────────────────────────────────────
@@ -574,6 +802,16 @@ function parseAIResponse(rawResponse) {
  */
 export async function executeAction(action, appStore) {
   const { type, data } = action;
+
+  // Authorization check: only authenticated users with proper roles can write to live ERP
+  const user = appStore.getState().user;
+  const isAuthorized = user && ['superadmin', 'admin', 'staff', 'accountant'].includes(user.role);
+  if (!isAuthorized) {
+    return {
+      success: false,
+      message: '⚠️ Unauthorized: You must be logged in with administrative or staff privileges to import or change ERP records.'
+    };
+  }
 
   try {
     switch (type) {
