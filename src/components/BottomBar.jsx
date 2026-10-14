@@ -33,8 +33,8 @@ export function BottomBar() {
               isActive ? 'text-primary' : 'text-textSecondary hover:text-textPrimary'
             }`}
           >
-            <Icon className={`w-5.5 h-5.5 ${isActive ? 'text-primary' : 'text-textSecondary'}`} />
-            <span className="text-[10px] font-medium leading-none tracking-tight truncate max-w-[64px]">
+            <Icon className={`w-5 h-5 ${isActive ? 'text-primary' : 'text-textSecondary'}`} />
+            <span className="text-micro font-medium leading-none tracking-tight truncate max-w-[64px]">
               {item.name}
             </span>
           </button>

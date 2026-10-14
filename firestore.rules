@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        getUserData().role == 'superadmin' ||
+        request.auth.token.email.matches('.*superadmin.*')
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        getUserData().role in ['admin', 'superadmin']
+      );
+    }
+
+    function isStaff() {
+      return isSignedIn() && (
+        getUserData().role in ['staff', 'accountant', 'admin', 'superadmin']
+      );
+    }
+
+    // ─── USERS COLLECTION ──────────────────────────────────────────
+    match /users/{userId} {
+      // Any authenticated user can read their own profile; Super Admin can read all
+      allow read: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin() || isAdmin());
+      
+      // Super Admin can create, update, or deactivate any user
+      allow create, update: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
+      
+      // Only Super Admin can delete users (client-side protects last superadmin)
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── AUDIT LOGS (Immutable Security Trail) ─────────────────────
+    match /audit_logs/{logId} {
+      // Super Admin and Admin can view audit records
+      allow read: if isAdmin();
+      
+      // Any authenticated mutation writes an audit log (create only)
+      allow create: if isSignedIn();
+      
+      // Audit records are strictly immutable: no updates or deletes permitted
+      allow update, delete: if false;
+    }
+
+    // ─── TRASH COLLECTION (Soft-Delete & Recovery) ──────────────────
+    match /trash/{trashId} {
+      // Only Super Admin and Admin can view, restore, or purge items from trash
+      allow read, write, delete: if isAdmin();
+    }
+
+    // ─── SYNC FAILURES ─────────────────────────────────────────────
+    match /sync_failures/{failureId} {
+      allow read, write, delete: if isAdmin();
+    }
+
+    // ─── BUSINESS SETTINGS ─────────────────────────────────────────
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ─── OPERATIONAL ENTITIES (Farmers, Collections, Customers, etc)
+    match /farmers/{farmerId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+
+    match /collections/{collectionId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+
+    match /customers/{customerId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /sales/{saleId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+
+    match /daily_spreadsheets/{sheetId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

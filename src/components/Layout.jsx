@@ -3,7 +3,7 @@ import { useAppStore } from '../store/appStore';
 import Sidebar from './Sidebar';
 import BottomBar from './BottomBar';
 import LanguageToggle from './LanguageToggle';
-import { Settings, LogOut, User } from 'lucide-react';
+import { Settings, LogOut, User, ShieldCheck } from 'lucide-react';
 
 export function Layout({ children }) {
   const { t } = useTranslation();
@@ -23,6 +23,8 @@ export function Layout({ children }) {
         return t('nav.accounts');
       case 'settings':
         return t('nav.settings');
+      case 'superadmin':
+        return 'Super Admin Control Center';
       default:
         return '';
     }
@@ -41,14 +43,14 @@ export function Layout({ children }) {
       <div className="flex-1 flex flex-col lg:pl-60 pb-16 lg:pb-0 min-h-screen">
         
         {/* Header Bar */}
-        <header className="h-16 bg-white border-b border-black/[0.08] flex items-center justify-between px-4 sm:px-6 sticky top-0 z-20 shadow-sm">
+        <header className="h-16 bg-white border-b border-black/[0.07] flex items-center justify-between px-6 sm:px-8 sticky top-0 z-20 shadow-sm">
           {/* Left Title */}
-          <div className="flex items-center space-x-3 min-w-0">
-            <h2 className="text-sm sm:text-base md:text-lg font-bold text-primary font-head tracking-tight truncate">
+          <div className="flex items-center gap-3 min-w-0">
+            <h2 className="text-subtitle font-bold text-primary font-head tracking-tight truncate leading-none">
               {getWorkspaceTitle()}
             </h2>
             {activeWorkspace === 'dashboard' && (
-              <span className="hidden sm:inline-block px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-accent border border-accent/20 bg-accent/5 rounded-full font-body uppercase">
+              <span className="hidden sm:inline-flex items-center px-2.5 py-1 text-micro font-semibold tracking-wider text-accent border border-accent/20 bg-accent/5 rounded-pill font-body uppercase">
                 {t('app.tagline')}
               </span>
             )}
@@ -66,19 +68,28 @@ export function Layout({ children }) {
                   <User className="w-4 h-4" />
                 </div>
                 <div className="hidden md:block text-left">
-                  <p className="text-xs font-semibold text-textPrimary leading-none">{user.name}</p>
-                  <p className="text-[10px] text-textSecondary capitalize mt-0.5">{user.role}</p>
+                  <p className="text-caption font-semibold text-textPrimary leading-none">{user.name}</p>
+                  <p className="text-micro text-textSecondary capitalize mt-0.5">{user.role}</p>
                 </div>
                 
                 {/* Mobile settings / logout icons */}
                 <div className="lg:hidden flex items-center space-x-1">
-                  {user.role === 'admin' && (
-                    <button 
-                      onClick={() => setWorkspace('settings')} 
-                      className={`p-1.5 rounded-lg text-textSecondary hover:bg-black/[0.04] ${activeWorkspace === 'settings' ? 'text-primary bg-primary/10' : ''}`}
-                    >
-                      <Settings className="w-4.5 h-4.5" />
-                    </button>
+                  {(user.role === 'admin' || user.role === 'superadmin') && (
+                    <>
+                      <button 
+                        onClick={() => setWorkspace('superadmin')} 
+                        className={`p-1.5 rounded-lg text-textSecondary hover:bg-black/[0.04] ${activeWorkspace === 'superadmin' ? 'text-primary bg-primary/10' : ''}`}
+                        title="Super Admin"
+                      >
+                        <ShieldCheck className="w-4.5 h-4.5 text-primary" />
+                      </button>
+                      <button 
+                        onClick={() => setWorkspace('settings')} 
+                        className={`p-1.5 rounded-lg text-textSecondary hover:bg-black/[0.04] ${activeWorkspace === 'settings' ? 'text-primary bg-primary/10' : ''}`}
+                      >
+                        <Settings className="w-4.5 h-4.5" />
+                      </button>
+                    </>
                   )}
                   <button 
                     onClick={handleLogout} 

@@ -19,6 +19,7 @@ export function Login() {
 
   // Pre-configured staff profiles for rapid testing & evaluation
   const demoUsers = [
+    { name: 'Super Admin (Root)', role: 'superadmin', email: 'superadmin@gaudai.com', password: 'password123' },
     { name: 'Chaitanya Dhaware (Admin)', role: 'admin', email: 'admin@gaudai.com', password: 'password123' },
     { name: 'Shankar Rao (Staff)', role: 'staff', email: 'staff@gaudai.com', password: 'password123' },
     { name: 'Sunita Deshpande (Accountant)', role: 'accountant', email: 'accountant@gaudai.com', password: 'password123' }
@@ -43,8 +44,8 @@ export function Login() {
       const matchedDemo = demoUsers.find(u => u.email === email.toLowerCase());
       if (matchedDemo) {
         setUser({
-          uid: matchedDemo.role === 'admin' ? 'adm1' : (matchedDemo.role === 'staff' ? 'stf1' : 'acc1'),
-          name: matchedDemo.name.split(' ')[0] + ' ' + matchedDemo.name.split(' ')[1],
+          uid: matchedDemo.role === 'superadmin' ? 'sa_root' : (matchedDemo.role === 'admin' ? 'adm1' : (matchedDemo.role === 'staff' ? 'stf1' : 'acc1')),
+          name: matchedDemo.name.split(' (')[0],
           role: matchedDemo.role,
           active: true,
           email: matchedDemo.email
@@ -106,10 +107,10 @@ export function Login() {
         {/* Right column (Form) */}
         <div className="p-8 sm:p-12 flex flex-col justify-center">
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-textPrimary font-head tracking-tight">
+            <h2 className="text-title font-bold text-textPrimary font-head tracking-tight">
               {isMarathi ? 'लॉगिन करा' : 'Sign In'}
             </h2>
-            <p className="text-textSecondary text-xs mt-1">
+            <p className="text-caption text-textSecondary mt-1.5">
               {t('app.tagline')}
             </p>
           </div>
@@ -161,7 +162,7 @@ export function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center items-center space-x-2 py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-primary hover:bg-primary-light focus:outline-none transition-all cursor-pointer"
+              className="w-full flex justify-center items-center gap-2.5 py-3.5 px-4 border border-transparent text-base font-bold rounded-xl text-white bg-primary hover:bg-primary-light focus:outline-none transition-all cursor-pointer shadow-card"
             >
               {loading ? (
                 <span>{isMarathi ? 'लॉगिन होत आहे...' : 'Signing In...'}</span>
@@ -174,9 +175,8 @@ export function Login() {
             </button>
           </form>
 
-          {/* Quick Login Profiles */}
-          <div className="mt-8 pt-8 border-t border-black/[0.08]">
-            <h4 className="text-xs font-bold text-textSecondary uppercase tracking-wider mb-3 flex items-center space-x-1">
+          <div className="mt-8 pt-6 border-t border-black/[0.07]">
+            <h4 className="label flex items-center gap-1.5 mb-3">
               <UserCheck className="w-3.5 h-3.5 text-accent" />
               <span>{isMarathi ? 'डेमो खात्याद्वारे थेट लॉगिन करा' : 'Quick Demo Profiles'}</span>
             </h4>
@@ -186,17 +186,17 @@ export function Login() {
                   key={i}
                   type="button"
                   onClick={() => selectDemoProfile(profile)}
-                  className="w-full text-left px-4 py-2 border border-black/[0.04] rounded-lg text-xs font-medium bg-background text-textSecondary hover:bg-primary/5 hover:border-primary/20 hover:text-primary transition-all flex justify-between items-center"
+                  className="w-full text-left px-4 py-2.5 border border-black/[0.08] rounded-xl text-caption font-medium bg-background text-textSecondary hover:bg-primary/5 hover:border-primary/30 hover:text-primary transition-all flex justify-between items-center group"
                 >
-                  <span>{profile.name}</span>
-                  <span className="text-[10px] bg-black/[0.05] px-2 py-0.5 rounded uppercase font-mono tracking-wider">{profile.role}</span>
+                  <span className="group-hover:font-semibold transition-all">{profile.name}</span>
+                  <span className="text-micro bg-black/[0.06] group-hover:bg-primary/10 group-hover:text-primary px-2.5 py-1 rounded-pill uppercase font-mono tracking-wider transition-all">{profile.role}</span>
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-textSecondary text-center mt-3">
+            <p className="text-micro text-textSecondary text-center mt-3">
               {isMarathi 
                 ? 'डेमो प्रोफाईल निवडा आणि वरील "प्रवेश करा" बटणावर क्लिक करा.'
-                : 'Select a demo profile, then click the "Sign In" button above.'}
+                : 'Select a demo profile, then click "Sign In" above.'}
             </p>
           </div>
 

@@ -32,8 +32,29 @@ export default {
         body: ['var(--font-body)', 'sans-serif'],
         mono: ['DM Mono', 'monospace']
       },
+      fontSize: {
+        /* Semantic type scale */
+        'display': ['2rem', { lineHeight: '1.15', fontWeight: '800', letterSpacing: '-0.02em' }],      /* 32px – hero numbers */
+        'title':   ['1.375rem', { lineHeight: '1.25', fontWeight: '700', letterSpacing: '-0.015em' }], /* 22px – section titles */
+        'subtitle':['1.0625rem', { lineHeight: '1.4', fontWeight: '600' }],                            /* 17px – card headings */
+        'body':    ['0.9375rem', { lineHeight: '1.55' }],                                              /* 15px – body copy */
+        'caption': ['0.8125rem', { lineHeight: '1.4' }],                                              /* 13px – labels, secondary */
+        'micro':   ['0.6875rem', { lineHeight: '1.4', letterSpacing: '0.04em' }],                     /* 11px – badges, metadata */
+      },
       boxShadow: {
-        subtle: '0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03)'
+        subtle:   '0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03)',
+        card:     '0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04)',
+        'card-hover': '0 8px 24px rgba(15, 110, 86, 0.10), 0 2px 6px rgba(0,0,0,0.06)',
+        elevated: '0 4px 16px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06)',
+      },
+      borderRadius: {
+        card: '1rem',      /* 16px – all cards */
+        pill: '999px',     /* pill buttons */
+      },
+      spacing: {
+        '4.5': '1.125rem',
+        '13': '3.25rem',
+        '18': '4.5rem',
       }
     },
   },

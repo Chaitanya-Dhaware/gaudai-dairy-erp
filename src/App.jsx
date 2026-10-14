@@ -13,6 +13,7 @@ const CustomerWorkspace = lazy(() => import('./views/CustomerWorkspace'));
 const ExpenseWorkspace = lazy(() => import('./views/ExpenseWorkspace'));
 const AccountsWorkspace = lazy(() => import('./views/AccountsWorkspace'));
 const Settings = lazy(() => import('./views/Settings'));
+const SuperAdminWorkspace = lazy(() => import('./views/superadmin/SuperAdminWorkspace'));
 
 const toastStyle = {
   duration: 3000,
@@ -98,6 +99,7 @@ function App() {
           {activeWorkspace === 'expenses' && <ExpenseWorkspace />}
           {activeWorkspace === 'accounts' && <AccountsWorkspace />}
           {activeWorkspace === 'settings' && <Settings />}
+          {activeWorkspace === 'superadmin' && <SuperAdminWorkspace />}
         </Suspense>
       </Layout>
       <Toaster position="top-right" toastOptions={toastStyle} />

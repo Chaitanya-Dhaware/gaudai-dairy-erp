@@ -95,6 +95,7 @@ export const useAppStore = create((set, get) => ({
     if (workspace === 'expenses') tab = 'add';
     if (workspace === 'accounts') tab = 'financials';
     if (workspace === 'settings') tab = 'general';
+    if (workspace === 'superadmin') tab = 'sa-dashboard';
     set({ activeWorkspace: workspace, activeTab: tab });
   },
   
@@ -869,8 +870,9 @@ onAuthStateChanged(auth, async (firebaseUser) => {
         const fallbackUser = {
           uid: firebaseUser.uid,
           name: firebaseUser.email.split('@')[0],
-          role: firebaseUser.email.includes('admin') ? 'admin' : 
-                (firebaseUser.email.includes('accountant') ? 'accountant' : 'staff'),
+          role: firebaseUser.email.includes('superadmin') ? 'superadmin' :
+                (firebaseUser.email.includes('admin') ? 'admin' : 
+                (firebaseUser.email.includes('accountant') ? 'accountant' : 'staff')),
           active: true,
           email: firebaseUser.email
         };
