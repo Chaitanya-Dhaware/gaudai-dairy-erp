@@ -122,7 +122,7 @@ const FORBIDDEN_SHEET_KEYS = [
 ];
 
 const MAX_BODY_BYTES = 1024 * 512; // 512 KB
-const APPS_SCRIPT_TIMEOUT_MS = 30000; // 30s
+const APPS_SCRIPT_TIMEOUT_MS = 25000; // 25s internal timeout leaving 10s buffer for Vercel execution budget
 
 /**
  * Checks whether an object contains any forbidden spreadsheet ID keys at any depth.
@@ -199,8 +199,8 @@ export default async function handler(req, res, deps = {}) {
   const appsScriptUrl = process.env.APPS_SCRIPT_URL;
   const appsScriptSecret = process.env.APPS_SCRIPT_SECRET;
 
-  if (!appsScriptUrl || !appsScriptSecret) {
-    console.error('Server Configuration Error: APPS_SCRIPT_URL or APPS_SCRIPT_SECRET is missing.');
+  if (!appsScriptUrl || !appsScriptSecret || typeof appsScriptSecret !== 'string' || appsScriptSecret.length < 32) {
+    console.error('Server Configuration Error: APPS_SCRIPT_URL or APPS_SCRIPT_SECRET is missing, empty, or shorter than 32 characters.');
     return res.status(500).json({ success: false, error: 'Backend service configuration error.' });
   }
 

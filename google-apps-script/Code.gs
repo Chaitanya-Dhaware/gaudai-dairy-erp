@@ -106,14 +106,35 @@ function doGet(e) {
  * Receives JSON requests from the authorized backend proxy.
  */
 function doPost(e) {
-  var response = { success: false, error: "" };
   try {
-    var requestData = JSON.parse(e.postData.contents);
+    if (!e || !e.postData || !e.postData.contents) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        error: "Unauthorized."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
 
-    // Defense-in-depth: Secret validation against Script Properties
+    var requestData;
+    try {
+      requestData = JSON.parse(e.postData.contents);
+    } catch (parseErr) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        error: "Unauthorized."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Fail-closed secret verification:
+    // If stored APPS_SCRIPT_SECRET is missing, empty, or shorter than 32 characters, reject every POST immediately.
+    // Also reject if the provided secret is missing, empty, shorter than 32 characters, or does not match.
+    // This check strictly runs before loadConfigFromProperties, openById, or any other work.
     var props = PropertiesService.getScriptProperties();
-    var expectedSecret = props.getProperty("APPS_SCRIPT_SECRET");
-    if (!expectedSecret || !requestData.secret || !constantTimeCompare(requestData.secret, expectedSecret)) {
+    var storedSecret = props ? props.getProperty("APPS_SCRIPT_SECRET") : null;
+    var providedSecret = (requestData && requestData.secret) ? String(requestData.secret) : null;
+
+    if (!storedSecret || typeof storedSecret !== 'string' || storedSecret.length < 32 ||
+        !providedSecret || typeof providedSecret !== 'string' || providedSecret.length < 32 ||
+        !constantTimeCompare(providedSecret, storedSecret)) {
       return ContentService.createTextOutput(JSON.stringify({
         success: false,
         error: "Unauthorized."

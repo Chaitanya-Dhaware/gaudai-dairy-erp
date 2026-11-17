@@ -1,4 +1,15 @@
 {
+  "functions": {
+    "api/gemini.js": {
+      "maxDuration": 60
+    },
+    "api/gas-proxy.js": {
+      "maxDuration": 35
+    },
+    "api/users.js": {
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],

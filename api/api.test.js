@@ -205,7 +205,7 @@ describe('Serverless API Proxy & Security Gateway', () => {
   describe('Apps Script Proxy Endpoint (/api/gas-proxy)', () => {
     beforeEach(() => {
       process.env.APPS_SCRIPT_URL = 'https://mock-apps-script.local/exec';
-      process.env.APPS_SCRIPT_SECRET = 'TEST_SERVER_SECRET_32CHARS';
+      process.env.APPS_SCRIPT_SECRET = 'TEST_SERVER_SECRET_32CHARS_LONG_ENOUGH!';
 
       usersCollection.set('staff_1', { uid: 'staff_1', role: 'staff', active: true });
       usersCollection.set('admin_1', { uid: 'admin_1', role: 'admin', active: true });
@@ -277,6 +277,29 @@ describe('Serverless API Proxy & Security Gateway', () => {
       expect(res.body.error).toContain('not permitted');
     });
 
+    it('fails closed with 500 when APPS_SCRIPT_SECRET is missing, empty, or shorter than 32 characters', async () => {
+      process.env.APPS_SCRIPT_SECRET = 'short_secret';
+      const req = {
+        method: 'POST',
+        headers: { authorization: 'Bearer user_token_staff_1' },
+        body: { action: 'batchLoadData' }
+      };
+      const res = createMockRes();
+
+      await gasProxyHandler(req, res, { auth: mockAuth, db: mockDb });
+      expect(res.statusCode).toBe(500);
+      expect(res.body.error).toBe('Backend service configuration error.');
+
+      // Also verify empty secret fails closed
+      process.env.APPS_SCRIPT_SECRET = '';
+      const resEmpty = createMockRes();
+      await gasProxyHandler(req, resEmpty, { auth: mockAuth, db: mockDb });
+      expect(resEmpty.statusCode).toBe(500);
+
+      // Restore secret for subsequent tests
+      process.env.APPS_SCRIPT_SECRET = 'TEST_SERVER_SECRET_32CHARS_LONG_ENOUGH!';
+    });
+
     it('forwards valid staff request to upstream Apps Script injecting secret and stripping whatsappToken', async () => {
       // Mock global fetch for upstream Apps Script
       const mockFetch = vi.fn().mockResolvedValue({
@@ -307,7 +330,7 @@ describe('Serverless API Proxy & Security Gateway', () => {
       // Ensure secret was injected into upstream call
       expect(mockFetch).toHaveBeenCalled();
       const sentPayload = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(sentPayload.secret).toBe('TEST_SERVER_SECRET_32CHARS');
+      expect(sentPayload.secret).toBe('TEST_SERVER_SECRET_32CHARS_LONG_ENOUGH!');
       expect(sentPayload.action).toBe('getSettings');
     });
   });
@@ -379,6 +402,47 @@ describe('Serverless API Proxy & Security Gateway', () => {
       expect(res429.statusCode).toBe(429);
       expect(res429.body.error).toContain('Too many requests');
     });
+
+    it('rejects unknown or unapproved AI model names with 400', async () => {
+      const req = {
+        method: 'POST',
+        headers: { authorization: 'Bearer user_token_staff_1' },
+        body: {
+          contents: [{ parts: [{ text: 'hi' }] }],
+          model: 'unapproved-gpt-5-model'
+        }
+      };
+      const res = createMockRes();
+
+      await geminiHandler(req, res, { auth: mockAuth, db: mockDb });
+      expect(res.statusCode).toBe(400);
+      expect(res.body.error).toContain('Invalid or unsupported AI model');
+    });
+
+    it('supports Upstash Redis rate limiting when configured in environment', async () => {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://fake-redis.upstash.io';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'mock_token';
+
+      // Mock redis pipeline returning count = 35 (over 30 threshold)
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [{ result: 35 }, { result: 1 }]
+      });
+
+      const req = {
+        method: 'POST',
+        headers: { authorization: 'Bearer user_token_staff_1' },
+        body: { contents: [{ parts: [{ text: 'hi' }] }] }
+      };
+      const res = createMockRes();
+
+      await geminiHandler(req, res, { auth: mockAuth, db: mockDb, fetch: mockFetch });
+      expect(res.statusCode).toBe(429);
+      expect(res.body.error).toContain('Too many requests');
+
+      delete process.env.UPSTASH_REDIS_REST_URL;
+      delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    });
   });
 
   // ─── 4. USER MANAGEMENT ENDPOINT (users.js) ───────────────────────
@@ -419,12 +483,17 @@ describe('Serverless API Proxy & Security Gateway', () => {
       expect(res.body.data.role).toBe('staff');
       expect(res.body.resetLink).toBeDefined();
 
+      // Ensure resetLink is NEVER persisted in Firestore users profile or audit logs
+      const savedUser = usersCollection.get(res.body.data.uid);
+      expect(savedUser.resetLink).toBeUndefined();
+
       // Check audit log was written
       expect(auditLogsCollection.size).toBe(1);
       const log = Array.from(auditLogsCollection.values())[0];
       expect(log.userId).toBe('sa_1');
       expect(log.actor).toBe('sa_1');
       expect(log.action).toBe('CREATE_USER');
+      expect(log.after.resetLink).toBeUndefined();
     });
 
     it('blocks deactivating or demoting the last active superadmin', async () => {

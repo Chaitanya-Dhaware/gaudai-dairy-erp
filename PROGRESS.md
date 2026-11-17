@@ -100,6 +100,117 @@
    - Tested users endpoint superadmin gate, creation flow, and last superadmin demotion guard.
 8. **Environment Configuration (`.env.example`):**
    - Created `.env.example` with placeholders for all server secrets and explicit directive forbidding the `VITE_` prefix for secrets.
+   - Added Upstash Redis configuration variables (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`) for optional distributed rate limiting.
+   - Added notes on `APPS_SCRIPT_SECRET` (minimum 32 characters) and `GEMINI_MODEL` lifecycle.
+
+---
+
+## Phase 2 Verification & Security Tightening
+
+### 1. Fail-Closed Secret Verification
+- `Code.gs` enforces a fail-closed check at the very top of `doPost(e)` before calling `loadConfigFromProperties()`, `openById()`, or performing any other work.
+- If `APPS_SCRIPT_SECRET` in Script Properties is missing, empty, or shorter than 32 characters, `doPost(e)` immediately returns `{"success":false,"error":"Unauthorized."}`.
+- If the incoming request secret is missing, empty, shorter than 32 characters, or fails constant-time comparison (`constantTimeCompare`), it immediately returns `{"success":false,"error":"Unauthorized."}`.
+- On the serverless proxy side (`/api/gas-proxy.js`), if `APPS_SCRIPT_SECRET` is missing, empty, or shorter than 32 characters, the request fails closed with `500 Backend service configuration error.`
+- Automated test coverage in `api/api.test.js` proves proxy fail-closed behavior for empty or short secrets.
+
+#### Manual Verification Procedure for `Code.gs` Fail-Closed Secret:
+```bash
+# Test 1: Empty Secret in Request
+curl -s -X POST -H "Content-Type: application/json" -d '{"action":"batchLoadData","secret":""}' "<APPS_SCRIPT_URL>"
+# Expected Response: {"success":false,"error":"Unauthorized."}
+
+# Test 2: Secret Shorter than 32 Characters in Request
+curl -s -X POST -H "Content-Type: application/json" -d '{"action":"batchLoadData","secret":"short_secret_value"}' "<APPS_SCRIPT_URL>"
+# Expected Response: {"success":false,"error":"Unauthorized."}
+
+# Test 3: Missing / Empty APPS_SCRIPT_SECRET in Script Properties (Fail-Closed Proof)
+# a) First confirm that with APPS_SCRIPT_SECRET properly configured, a request with the matching secret succeeds:
+curl -s -X POST -H "Content-Type: application/json" -d '{"action":"batchLoadData","secret":"configured_32_character_secret_here"}' "<APPS_SCRIPT_URL>"
+# Expected: {"success":true,...}
+
+# b) Next, open Apps Script Editor -> Project Settings -> Script Properties.
+# Temporarily delete APPS_SCRIPT_SECRET or set it to an empty string.
+# Send the exact same request with the 32-character secret:
+curl -s -X POST -H "Content-Type: application/json" -d '{"action":"batchLoadData","secret":"configured_32_character_secret_here"}' "<APPS_SCRIPT_URL>"
+# Expected: {"success":false,"error":"Unauthorized."} (Proves fail-closed behavior before any sheet access)
+```
+
+### 2. Complete Code.gs Role-to-Action Audit Table
+All 36 actions present in the `Code.gs` switch statement are audited against `ROLE_ACTIONS` in `/api/gas-proxy.js`:
+
+| # | Action Name in `Code.gs` | Accountant | Staff | Admin | Superadmin | Destructive? | Security & Permission Status |
+| :-: | :--- | :-: | :-: | :-: | :-: | :-: | :--- |
+| 1 | `batchLoadData` | Allowed | Allowed | Allowed | Allowed | No | Read-only metadata & sheets cache |
+| 2 | `importBackupData` | ❌ Blocked | ❌ Blocked | ❌ Blocked | Allowed | **Destructive** | Superadmin only |
+| 3 | `getSpreadsheetTabUrl` | Allowed | Allowed | Allowed | Allowed | No | Read-only tab URL lookup |
+| 4 | `clearTransactions` | ❌ Blocked | ❌ Blocked | ❌ Blocked | Allowed | **Destructive** | Superadmin only |
+| 5 | `archivePreviousDayData` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | **Destructive (Move/Purge)** | Admin & Superadmin only |
+| 6 | `archiveSpecificDate` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | **Destructive (Move/Purge)** | Admin & Superadmin only |
+| 7 | `setupDailyArchiveTrigger` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | No | Archive scheduler trigger setup |
+| 8 | `getArchiveStatus` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | No | Read-only archive status |
+| 9 | `getDailySpreadsheetAdmin` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | No | Read-only admin status |
+| 10 | `getDailySpreadsheetInfo` | Allowed | Allowed | Allowed | Allowed | No | Read-only spreadsheet status |
+| 11 | `resyncDailySpreadsheet` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | No | Operational resync |
+| 12 | `verifyDailySpreadsheet` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | No | Operational integrity check |
+| 13 | `migrateToDailySpreadsheets` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | **Destructive (Migration)** | Admin & Superadmin only |
+| 14 | `prepareDailySpreadsheet` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | No | Operational sheet initialization |
+| 15 | `registerFarmer` | ❌ Blocked | Allowed | Allowed | Allowed | No | Add farmer record |
+| 16 | `deleteFarmer` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | **Destructive** | Admin & Superadmin only |
+| 17 | `getFarmerList` | Allowed | Allowed | Allowed | Allowed | No | Read-only directory |
+| 18 | `addMilkCollection` | ❌ Blocked | Allowed | Allowed | Allowed | No | Add milk collection entry |
+| 19 | `getCollectionEntries` | Allowed | Allowed | Allowed | Allowed | No | Read-only collections |
+| 20 | `markFarmerPaid` | ❌ Blocked | Allowed | Allowed | Allowed | No | Operational payment flag |
+| 21 | `addCustomer` | ❌ Blocked | Allowed | Allowed | Allowed | No | Add customer record |
+| 22 | `getCustomerList` | Allowed | Allowed | Allowed | Allowed | No | Read-only customer directory |
+| 23 | `getProductList` | Allowed | Allowed | Allowed | Allowed | No | Read-only product list |
+| 24 | `addProduct` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | No | Add inventory item |
+| 25 | `updateProduct` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | No | Update inventory item |
+| 26 | `deleteProduct` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | **Destructive** | Admin & Superadmin only |
+| 27 | `addSale` | ❌ Blocked | Allowed | Allowed | Allowed | No | Record product sale |
+| 28 | `recordPayment` | ❌ Blocked | Allowed | Allowed | Allowed | No | Record customer payment |
+| 29 | `getSalesHistory` | Allowed | Allowed | Allowed | Allowed | No | Read-only sales history |
+| 30 | `addExpense` | ❌ Blocked | Allowed | Allowed | Allowed | No | Add operational expense |
+| 31 | `getExpenses` | Allowed | Allowed | Allowed | Allowed | No | Read-only expenses |
+| 32 | `deleteExpense` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | **Destructive** | Admin & Superadmin only |
+| 33 | `getMasterFinancialSummary` | Allowed | ❌ Blocked | Allowed | Allowed | No | Read-only financial summary |
+| 34 | `getCashFlowStatement` | Allowed | ❌ Blocked | Allowed | Allowed | No | Read-only cash flow statement |
+| 35 | `getSettings` | Allowed | Allowed | Allowed | Allowed | No | Read-only business settings |
+| 36 | `updateSettings` | ❌ Blocked | ❌ Blocked | Allowed | Allowed | **Destructive (Settings mutation)** | Admin & Superadmin only |
+
+**Audit Findings:**
+- **Zero actions missing:** Every single action implemented in `Code.gs` is explicitly registered in `/api/gas-proxy.js`.
+- **Zero destructive actions permitted for staff or accountant:** Neither `staff` nor `accountant` can invoke any `delete*`, `clearTransactions`, `importBackupData`, `archive*`, `migrate*`, or `updateSettings` actions.
+- **Strict Role Boundaries:** Destructive data wiping (`clearTransactions`, `importBackupData`) is strictly quarantined to `superadmin`.
+
+### 3. Rate Limiting Architecture & Production Guidance
+- `/api/gemini.js` implements a hybrid rate limiting system:
+  1. **Distributed Store (Upstash Redis):** When `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set, an atomic Redis pipeline with a fixed 1-minute bucket key (`rl:gemini:${uid}:${Math.floor(Date.now() / 60000)}`) enforces a strict global ceiling of 30 requests/minute/user across all concurrent Vercel serverless instances without resetting TTL on sustained traffic.
+  2. **In-Memory Fallback:** When Upstash environment variables are not configured (e.g., local development or standalone deployments), the limiter falls back to an in-memory sliding window.
+  3. **Outage Fallback & Operational Note:** In production on Vercel without Upstash Redis configured (or during an upstream Redis outage), the limiter safely falls back to the in-memory counter per serverless instance (best-effort across concurrent instances, where each healthy instance can allow up to 30 requests in the window). For strict multi-instance enforcement, configure Upstash Redis credentials.
+
+### 4. Gemini AI Proxy Hardening
+- **Payload Limit:** Adjusted to 4.5 MB (`Math.floor(4.5 * 1024 * 1024)` bytes) to match Vercel Serverless Function request limits, enabling high-resolution receipt OCR images without payload rejection.
+- **Serverless Timeout & Headroom:** Set internal fetch timeout to 25s in `api/gas-proxy.js` and configured `"maxDuration": 35` for `api/gas-proxy.js` (and 60s for `api/gemini.js`, 30s for `api/users.js`) in `vercel.json`. This 10-second headroom guarantees the proxy returns a controlled 504 JSON response instead of Vercel abruptly cutting off the invocation.
+- **Model Allowlist:** Strict model validation against `ALLOWED_GEMINI_MODELS` (including `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-2.5-pro`, `gemini-2.0-flash`, `gemini-2.0-flash-lite`, `gemini-1.5-flash`, `gemini-1.5-pro`). Unapproved models are rejected with `400 Bad Request`.
+- **Configurable Default Model:** Default model is resolved via `process.env.GEMINI_MODEL || 'gemini-2.0-flash'`, with explicit instructions to monitor Google AI model lifecycles.
+- **Zero-Logging Privacy Contract:** Never logs prompts, prompt parts, base64 images, auth tokens, or API keys. Errors log only sanitized status descriptions.
+
+### 5. User Management & Password Reset Link Contract
+- **Reset Link Delivery Flow:**
+  1. The authenticated Superadmin initiates user creation via `/api/users`.
+  2. The Firebase Admin SDK creates the account and generates an ephemeral password reset link via `generatePasswordResetLink()`.
+  3. The `resetLink` is returned strictly in the JSON response payload over HTTPS to the calling Superadmin.
+  4. The UI displays the link once to the Superadmin (e.g. via a modal copy button) for secure out-of-band transmission (in-person, secure SMS, or email).
+- **Security Guarantees:**
+  - `resetLink` is **NEVER** logged to server logs or `console.error`.
+  - `resetLink` is **NEVER** written to Cloud Firestore (neither in `users/{uid}` nor in `audit_logs`).
+  - `resetLink` is **NEVER** stored in localStorage or database records.
+- **Generic Error Responses:** Account creation failures return generic safe messages (e.g. `'A user with this email address already exists.'` or `'Failed to create user.'`) with zero stack traces.
+
+### 6. CORS and Error Sanitization Confirmation
+- Confirmed zero occurrences of `Access-Control-Allow-Origin: *`. All API routes are hosted under the same origin as the frontend SPA.
+- All endpoints (`gas-proxy`, `gemini`, `users`, `auth`) return generic, client-safe error messages with zero internal exception stack traces.
 
 ---
 
