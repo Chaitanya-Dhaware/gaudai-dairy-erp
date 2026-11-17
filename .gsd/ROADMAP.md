@@ -51,15 +51,15 @@ updated: 2026-11-17T18:24:00+05:30
 ---
 
 ### Phase 2: Secure Serverless Backend Proxy (`/api/*`) & Defense-in-Depth
-**Status:** ⬜ Not Started  
+**Status:** ✅ Complete  
 **Objective:** Build authenticated Vercel Serverless Functions to mediate all communication between the frontend and third-party APIs (Apps Script, Gemini, Firebase Admin). Harden `Code.gs` with shared secret verification and locked sheet IDs.  
 **Requirements:** SEC-04 (Vercel serverless proxy), SEC-05 (Admin SDK token & role check), SEC-06 (Action allowlist), SEC-07 (Apps Script shared secret), SEC-08 (Locked sheet IDs), SEC-09 (Admin SDK user creation)
 
 **Plans:**
-- [ ] **Plan 2.1: Serverless Middleware & Firebase Admin Auth Helper**
+- [x] **Plan 2.1: Serverless Middleware & Firebase Admin Auth Helper**
   - Create `/api/_lib/firebaseAdmin.js` to initialize the Firebase Admin SDK using server-side credentials (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` with `\n` restoration).
-  - Create `/api/_lib/authMiddleware.js` to extract Bearer token, verify ID token with Admin SDK, and retrieve user's authoritative role from Firestore.
-- [ ] **Plan 2.2: Implement `/api/gas-proxy` with Role Allowlist**
+  - Create `/api/_lib/auth.js` to extract Bearer token, verify ID token with Admin SDK, and retrieve user's authoritative role from Firestore.
+- [x] **Plan 2.2: Implement `/api/gas-proxy` with Role Allowlist**
   - Implement `/api/gas-proxy.js`:
     - Enforce role-based action allowlist:
       - `staff` / `accountant`: collection, sales, expenses, batchLoadData, getSpreadsheetTabUrl.
@@ -68,18 +68,18 @@ updated: 2026-11-17T18:24:00+05:30
     - Reject any request containing `sheetsIdMaster`, `sheetsIdCollection`, `sheetsIdCustomer`, or `sheetsIdExpense`.
     - Inject `APPS_SCRIPT_SECRET` into the payload and forward to `APPS_SCRIPT_URL`.
     - Filter response: ensure `getSettings` never leaks `WHATSAPP_TOKEN` or internal sheet IDs.
-- [ ] **Plan 2.3: Implement `/api/gemini` Proxy with Configurable Model**
+- [x] **Plan 2.3: Implement `/api/gemini` Proxy with Configurable Model**
   - Implement `/api/gemini.js`:
     - Authenticate caller via Firebase ID token (any active authenticated user).
     - Hold `GEMINI_API_KEY` securely in server environment.
     - Support a single configurable model name (e.g. `GEMINI_MODEL=gemini-2.0-flash`).
     - Forward chat generation and OCR multimodal prompts to Google Generative Language API.
-- [ ] **Plan 2.4: Implement `/api/users` Endpoint (Firebase Admin SDK)**
+- [x] **Plan 2.4: Implement `/api/users` Endpoint (Firebase Admin SDK)**
   - Implement `/api/users.js`:
     - Require `superadmin` role.
     - Use `admin.auth().createUser()` and `admin.auth().generatePasswordResetLink()`.
     - Create Firestore user profile under atomic transaction and write audit log.
-- [ ] **Plan 2.5: Harden Google Apps Script (`Code.gs`)**
+- [x] **Plan 2.5: Harden Google Apps Script (`Code.gs`)**
   - Add secret verification at the entry of `doPost`: reject requests if `requestData.secret !== PropertiesService.getScriptProperties().getProperty("APPS_SCRIPT_SECRET")`.
   - Reject requests containing any sheet ID overrides (`sheetsIdMaster`, etc.).
   - Remove `MASTER_SHEET_ID_OVERRIDE` line.

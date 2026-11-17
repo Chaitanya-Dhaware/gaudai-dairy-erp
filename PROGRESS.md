@@ -10,7 +10,7 @@
 | Phase | Description | Status |
 |:---:|---|:---:|
 | **Phase 1** | Authentication & Client Lockdown (Remove Demo Bypass, Add Tests, Auth Emulator Docs) | ✅ Complete |
-| **Phase 2** | Secure Serverless Backend Proxy (`/api/*`) & Defense-in-Depth in `Code.gs` | ⬜ Not Started |
+| **Phase 2** | Secure Serverless Backend Proxy (`/api/*`) & Defense-in-Depth in `Code.gs` | ✅ Complete |
 | **Phase 3** | Database & Access Control Hardening (`firestore.rules` + Emulator Tests) | ⬜ Not Started |
 | **Phase 4** | Frontend Egress Refactor (Eliminate Direct Calls to Gemini, Apps Script & Identity Toolkit) | ⬜ Not Started |
 | **Phase 5** | Secure File Import (Replace `xlsx` with `papaparse` & `exceljs`, Lazy Loading, Limits, Audit) | ⬜ Not Started |
@@ -47,9 +47,59 @@
    - All Phase 1 ESLint checks passing (0 errors).
    - Full Vitest suite passing (5 test files, 29 tests passed).
 
-### Notes for Next Iteration (Phase 2)
-- **Scope for Next Iteration:** Phase 2: Secure Serverless Backend Proxy (`/api/*`) & Defense-in-Depth in `Code.gs`.
+### Notes for Next Iteration (Phase 3)
+- **Scope for Next Iteration:** Phase 3: Database & Access Control Hardening (`firestore.rules` + Emulator Tests). Note: Minimal hotfix is complete; Phase 3 will finalize per-collection granular matrix.
 - **Known Pre-existing Issues:** Legacy ESLint warnings in untouched files (`scratch/*`, `src/views/superadmin/*`) are tracked for cleanup in Phase 6.
+
+---
+
+## Phase 2 Execution Summary
+
+### Completed Tasks
+1. **Shared Auth Helper (`/api/_lib/auth.js` & `/api/_lib/firebaseAdmin.js`):**
+   - Implemented `authenticateRequest(req, options)` using the Firebase Admin SDK.
+   - Extracts and verifies Bearer ID tokens; returns `401` on missing, malformed, or expired tokens.
+   - Fetches authoritative user profile from Firestore `users/{uid}` on the server; never trusts client-supplied roles.
+   - Returns `403` for deactivated accounts (`active === false`) or accounts lacking required roles.
+   - Automatically restores `\n` line breaks in `FIREBASE_PRIVATE_KEY`.
+2. **Apps Script Proxy Endpoint (`/api/gas-proxy.js`):**
+   - Role-to-action allowlist enforcement:
+     - `staff`: Collections, sales, expenses, farmer/customer lookup and registration, daily spreadsheet info.
+     - `accountant`: Financial reports, cash flow statement, ledgers, transaction history, read-only settings inspection.
+     - `admin`: All staff actions plus soft deletes, product management, archive triggers, resync, settings updates.
+     - `superadmin`: All actions plus destructive recovery (`clearTransactions`, `importBackupData`).
+   - Unknown actions return `400`. Disallowed actions return `403`.
+   - Rejects any payload containing `sheetsIdMaster`, `sheetsIdCollection`, `sheetsIdCustomer`, or `sheetsIdExpense` with `400`.
+   - Enforces a 512KB payload ceiling (`413 Payload Too Large`) and 30-second timeout via `AbortController`.
+   - Injects `APPS_SCRIPT_SECRET` server-side before forwarding to `APPS_SCRIPT_URL`.
+   - Sanitizes responses: strips `whatsappToken` and internal credentials before returning to client.
+3. **Accountant Role Permissions Review:**
+   - *Current Implementation:* Accountant is granted read-only financial access (`getMasterFinancialSummary`, `getCashFlowStatement`, `batchLoadData`, `getDailySpreadsheetInfo`, `getExpenses`, `getSalesHistory`, `getCollectionEntries`, `getFarmerList`, `getCustomerList`, `getProductList`, `getSettings`).
+   - *Doubtful Permissions Note:* In traditional ERP setups, accountants may occasionally need to post journal entries (`addExpense`) or disburse cash (`markFarmerPaid`). Currently, these mutation actions are restricted to `staff` and `admin` per `HomeDashboard.jsx`. If accountants need to write expenses directly in the future, `addExpense` can be explicitly added to `ROLE_ACTIONS.accountant`.
+4. **Hardened Google Apps Script (`google-apps-script/Code.gs`):**
+   - Added constant-time string comparison (`constantTimeCompare`) to validate `requestData.secret` against `APPS_SCRIPT_SECRET` in Script Properties before any execution; mismatches immediately rejected with `Unauthorized`.
+   - Completely purged `MASTER_SHEET_ID_OVERRIDE`.
+   - Strictly rejects any request containing client-supplied sheet IDs (`sheetsIdMaster`, etc.).
+   - Removed setup-on-GET (`doGet?masterId=...`) and eliminated unauthenticated `openTab` GET redirection.
+   - Never returns `whatsappToken` or sheet IDs from `getSettingsTable()`; never accepts `whatsappToken` in `updateSettingsTable()`.
+   - Replaced verbose exceptions with generic, safe error responses.
+5. **Gemini AI Proxy Endpoint (`/api/gemini.js`):**
+   - Requires valid Firebase ID token authentication (active user).
+   - Enforces 512KB request limit and an in-memory sliding-window rate limit (30 requests/minute/user, returns `429`).
+   - Configurable model via `GEMINI_MODEL` (default: `gemini-2.0-flash`).
+   - `GEMINI_API_KEY` is maintained strictly server-side.
+6. **User Management Endpoint (`/api/users.js`):**
+   - Restricted strictly to `superadmin`.
+   - Creates users via Firebase Admin SDK `createUser()` and generates password reset link via `generatePasswordResetLink()`.
+   - Guards against deactivating or demoting the last active superadmin (`400`).
+   - Automatically writes an immutable audit log entry in Firestore with the verified caller UID.
+7. **Comprehensive Serverless Unit Test Suite (`api/api.test.js`):**
+   - Tested no token (401), bad token (401), expired token (401), missing profile (403), inactive user (403), insufficient role (403), valid authentication (200).
+   - Tested gas-proxy oversized body (413), forbidden spreadsheet IDs (400), unknown actions (400), role permissions.
+   - Tested gemini rate limiting and auth.
+   - Tested users endpoint superadmin gate, creation flow, and last superadmin demotion guard.
+8. **Environment Configuration (`.env.example`):**
+   - Created `.env.example` with placeholders for all server secrets and explicit directive forbidding the `VITE_` prefix for secrets.
 
 ---
 
@@ -83,6 +133,12 @@
   - If on the free Spark plan, protect the primary superadmin account with a long, unique password (24+ random characters) and dedicated secure email.
 
 ### 3. Google Apps Script Configuration, Deployment & Archival
+
+> [!WARNING]
+> **CRITICAL DEPLOYMENT TIMING FOR `Code.gs`:**
+> `Code.gs` must be deployed **ONLY AFTER Phase 4 (Frontend Refactor) is fully merged and deployed**.
+> The current frontend directly calls Apps Script without the shared secret; deploying the hardened `Code.gs` before Phase 4 will immediately reject all frontend spreadsheet requests and take the system offline.
+
 - [ ] **Set Script Properties First:**
   - In Apps Script editor -> **Project Settings > Script Properties**, set:
     - `APPS_SCRIPT_SECRET` = `<GENERATE_32_CHAR_RANDOM_SECRET>`
@@ -92,7 +148,7 @@
     - `EXPENSE_DB_ID` = `<PRODUCTION_EXPENSE_SHEET_ID>`
     - `WHATSAPP_TOKEN` = `<ROTATED_WHATSAPP_TOKEN>`
     - `WHATSAPP_PHONE_ID` = `<WHATSAPP_PHONE_ID>`
-- [ ] **Deploy and Archive Old Deployment:**
+- [ ] **Deploy and Archive Old Deployment (After Phase 4 Completes):**
   - In Apps Script editor, click **Deploy > New Deployment** (Type: Web App, Execute as: Me, Access: Anyone).
   - Copy the new Web App URL to Vercel env vars as `APPS_SCRIPT_URL`.
   - **CRITICAL:** Click **Deploy > Manage Deployments**, select the **OLD** deployment version(s), and click **Archive**. If not archived, the old unauthenticated version remains publicly accessible on the web!

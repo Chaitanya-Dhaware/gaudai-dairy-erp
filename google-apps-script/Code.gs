@@ -9,8 +9,7 @@
  *   Option B – Visit the web app URL in a browser (doGet will bootstrap it).
  */
 
-// ─── Master Spreadsheet ID is configured via PropertiesService (Script Properties) ───
-var MASTER_SHEET_ID_OVERRIDE = "";
+// ─── Master Spreadsheet ID is configured strictly via PropertiesService (Script Properties) ───
 
 // Global config populated at runtime via PropertiesService
 var CONFIG = {
@@ -25,12 +24,26 @@ var CONFIG = {
 };
 
 /**
+ * Constant-time string comparison to prevent timing attacks on APPS_SCRIPT_SECRET.
+ */
+function constantTimeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  var aLen = a.length;
+  var bLen = b.length;
+  var result = aLen ^ bLen;
+  for (var i = 0; i < aLen; i++) {
+    var bChar = i < bLen ? b.charCodeAt(i) : 0;
+    result |= a.charCodeAt(i) ^ bChar;
+  }
+  return result === 0;
+}
+
+/**
  * Load CONFIG from script properties (persisted across calls).
- * Falls back to MASTER_SHEET_ID_OVERRIDE if the property is not yet set.
  */
 function loadConfigFromProperties() {
   var props = PropertiesService.getScriptProperties();
-  CONFIG.MASTER_DB_ID      = props.getProperty("MASTER_DB_ID")      || MASTER_SHEET_ID_OVERRIDE || "";
+  CONFIG.MASTER_DB_ID      = props.getProperty("MASTER_DB_ID")      || "";
   CONFIG.COLLECTION_DB_ID  = props.getProperty("COLLECTION_DB_ID")  || "";
   CONFIG.CUSTOMER_DB_ID    = props.getProperty("CUSTOMER_DB_ID")    || "";
   CONFIG.EXPENSE_DB_ID     = props.getProperty("EXPENSE_DB_ID")     || "";
@@ -59,20 +72,14 @@ function saveConfigToProperties() {
  * ONE-TIME SETUP: Run this function from the Apps Script editor.
  * It saves the Master Spreadsheet ID to script properties and
  * auto-creates all sub-spreadsheets.
- *
- * How to use:
- *   1. Open your Master Google Sheet, copy its ID from the URL
- *      (the long string between /d/ and /edit)
- *   2. Paste it into MASTER_SHEET_ID_OVERRIDE at the top of this file, OR
- *      paste it as the argument below and run this function.
- *   3. Click Run > setupMaster in the Apps Script editor.
  */
 function setupMaster(masterIdArg) {
-  var masterId = masterIdArg || MASTER_SHEET_ID_OVERRIDE;
+  var props = PropertiesService.getScriptProperties();
+  var masterId = masterIdArg || props.getProperty("MASTER_DB_ID");
   if (!masterId) {
-    throw new Error("Please paste your Master Spreadsheet ID into MASTER_SHEET_ID_OVERRIDE at the top of Code.gs, then run setupMaster() again.");
+    throw new Error("Please set MASTER_DB_ID in Script Properties or pass it as an argument to setupMaster(masterId).");
   }
-  PropertiesService.getScriptProperties().setProperty("MASTER_DB_ID", masterId);
+  props.setProperty("MASTER_DB_ID", masterId);
   CONFIG.MASTER_DB_ID = masterId;
   // Trigger full auto-setup
   autoSetupSheets();
@@ -86,213 +93,48 @@ function setupMaster(masterIdArg) {
 }
 
 /**
- * HTTP GET – called when you visit the web app URL in a browser.
- * Bootstraps everything on first visit and returns a status page.
+ * HTTP GET Entry Point
+ * Direct GET requests do not perform setups, redirections, or data mutations.
  */
 function doGet(e) {
-  loadConfigFromProperties();
-
-  // Handle direct tab redirection
-  if (e && e.parameter && e.parameter.action === 'openTab') {
-    try {
-      var type = e.parameter.type;
-      var spreadsheetId = "";
-      var tabName = "";
-      
-      if (type === 'collection') {
-        spreadsheetId = CONFIG.COLLECTION_DB_ID;
-        tabName = "Milk_Collections";
-      } else if (type === 'customer') {
-        spreadsheetId = CONFIG.CUSTOMER_DB_ID;
-        tabName = "Sales";
-      } else if (type === 'expense') {
-        spreadsheetId = CONFIG.EXPENSE_DB_ID;
-        tabName = "Expenses";
-      }
-      
-      if (spreadsheetId && tabName) {
-        var ss = SpreadsheetApp.openById(spreadsheetId);
-        var sheet = ss.getSheetByName(tabName);
-        if (!sheet) {
-          throw new Error("Sheet tab " + tabName + " not found.");
-        }
-        
-        var sheetId = sheet.getSheetId();
-        var url = "https://docs.google.com/spreadsheets/d/" + spreadsheetId + "/edit#gid=" + sheetId;
-        
-        // Return a premium redirection HTML page to bypass iframe sandboxing limits
-        var redirectHtml = '<!DOCTYPE html>\n' +
-          '<html>\n' +
-          '<head>\n' +
-          '  <base target="_top">\n' +
-          '  <meta name="viewport" content="width=device-width, initial-scale=1">\n' +
-          '  <style>\n' +
-          '    body {\n' +
-          '      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;\n' +
-          '      background-color: #f4f6f8;\n' +
-          '      display: flex;\n' +
-          '      justify-content: center;\n' +
-          '      align-items: center;\n' +
-          '      height: 100vh;\n' +
-          '      margin: 0;\n' +
-          '      color: #1e293b;\n' +
-          '    }\n' +
-          '    .card {\n' +
-          '      background: white;\n' +
-          '      padding: 40px 32px;\n' +
-          '      border-radius: 20px;\n' +
-          '      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);\n' +
-          '      text-align: center;\n' +
-          '      max-width: 440px;\n' +
-          '      width: 90%;\n' +
-          '      border: 1px solid rgba(0, 0, 0, 0.04);\n' +
-          '    }\n' +
-          '    .icon-container {\n' +
-          '      width: 64px;\n' +
-          '      height: 64px;\n' +
-          '      background-color: #e2f0d9;\n' +
-          '      border-radius: 16px;\n' +
-          '      display: flex;\n' +
-          '      align-items: center;\n' +
-          '      justify-content: center;\n' +
-          '      margin: 0 auto 24px;\n' +
-          '    }\n' +
-          '    .icon {\n' +
-          '      width: 32px;\n' +
-          '      height: 32px;\n' +
-          '      color: #388e3c;\n' +
-          '    }\n' +
-          '    .spinner {\n' +
-          '      border: 3px solid #e2e8f0;\n' +
-          '      border-top: 3px solid #10b981;\n' +
-          '      border-radius: 50%;\n' +
-          '      width: 24px;\n' +
-          '      height: 24px;\n' +
-          '      animation: spin 1s linear infinite;\n' +
-          '      margin: 0 auto 20px;\n' +
-          '    }\n' +
-          '    @keyframes spin {\n' +
-          '      0% { transform: rotate(0deg); }\n' +
-          '      100% { transform: rotate(360deg); }\n' +
-          '    }\n' +
-          '    h2 {\n' +
-          '      font-size: 20px;\n' +
-          '      font-weight: 700;\n' +
-          '      margin: 0 0 8px 0;\n' +
-          '      color: #0f172a;\n' +
-          '    }\n' +
-          '    p {\n' +
-          '      color: #64748b;\n' +
-          '      font-size: 14px;\n' +
-          '      line-height: 1.5;\n' +
-          '      margin: 0 0 28px 0;\n' +
-          '    }\n' +
-          '    .btn {\n' +
-          '      display: inline-flex;\n' +
-          '      align-items: center;\n' +
-          '      justify-content: center;\n' +
-          '      background-color: #10b981;\n' +
-          '      color: white;\n' +
-          '      text-decoration: none;\n' +
-          '      padding: 12px 28px;\n' +
-          '      border-radius: 12px;\n' +
-          '      font-weight: 600;\n' +
-          '      font-size: 14px;\n' +
-          '      transition: all 0.2s;\n' +
-          '      box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2), 0 2px 4px -1px rgba(16, 185, 129, 0.1);\n' +
-          '    }\n' +
-          '    .btn:hover {\n' +
-          '      background-color: #059669;\n' +
-          '      transform: translateY(-1px);\n' +
-          '      box-shadow: 0 6px 8px -1px rgba(16, 185, 129, 0.25);\n' +
-          '    }\n' +
-          '  </style>\n' +
-          '</head>\n' +
-          '<body>\n' +
-          '  <div class="card">\n' +
-          '    <div class="icon-container">\n' +
-          '      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\n' +
-          '        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>\n' +
-          '        <polyline points="14 2 14 8 20 8"></polyline>\n' +
-          '        <line x1="8" y1="13" x2="16" y2="13"></line>\n' +
-          '        <line x1="8" y1="17" x2="16" y2="17"></line>\n' +
-          '        <line x1="8" y1="9" x2="10" y2="9"></line>\n' +
-          '      </svg>\n' +
-          '    </div>\n' +
-          '    <div class="spinner"></div>\n' +
-          '    <h2>गूगल शीट उघडत आहे...</h2>\n' +
-          '    <p style="margin-bottom: 8px; font-weight: 500;">Opening Google Sheet...</p>\n' +
-          '    <p>We are opening the sheet <strong>' + tabName + '</strong>. If it does not load automatically, click the button below.</p>\n' +
-          '    <a href="' + url + '" class="btn" target="_top">Open Spreadsheet</a>\n' +
-          '  </div>\n' +
-          '  <script>\n' +
-          '    setTimeout(function() {\n' +
-          '      try {\n' +
-          '        window.top.location.href = "' + url + '";\n' +
-          '      } catch(e) {\n' +
-          '        console.error("Auto-redirect blocked by sandbox:", e);\n' +
-          '      }\n' +
-          '    }, 300);\n' +
-          '  </script>\n' +
-          '</body>\n' +
-          '</html>';
-        
-        return HtmlService.createHtmlOutput(redirectHtml);
-      }
-    } catch(err) {
-      return HtmlService.createHtmlOutput("<h2>Error opening spreadsheet tab: " + err.toString() + "</h2>");
-    }
-  }
-
-  loadConfigFromProperties();
-  var masterId = (e && e.parameter && e.parameter.masterId) || CONFIG.MASTER_DB_ID;
-  if (masterId) {
-    CONFIG.MASTER_DB_ID = masterId;
-    autoSetupSheets();
-    saveConfigToProperties();
-  }
-  var html = "<h2>Gaudai AI Dairy ERP – Backend Status</h2>";
-  html += "<p><b>Master DB:</b> " + (CONFIG.MASTER_DB_ID || "❌ Not set") + "</p>";
-  html += "<p><b>Collection DB:</b> " + (CONFIG.COLLECTION_DB_ID || "❌ Not set") + "</p>";
-  html += "<p><b>Customer DB:</b> " + (CONFIG.CUSTOMER_DB_ID || "❌ Not set") + "</p>";
-  html += "<p><b>Expense DB:</b> " + (CONFIG.EXPENSE_DB_ID || "❌ Not set") + "</p>";
-  if (!CONFIG.MASTER_DB_ID) {
-    html += "<p style='color:red'>⚠️ To bootstrap, visit: <b>[this URL]?masterId=YOUR_SHEET_ID</b></p>";
-    html += "<p>Replace YOUR_SHEET_ID with the ID from your Master Google Sheet URL.</p>";
-  } else {
-    html += "<p style='color:green'>✅ Backend is configured and ready!</p>";
-  }
-  return HtmlService.createHtmlOutput(html);
+  return ContentService.createTextOutput("Gaudai AI Dairy ERP Backend Service (Active)")
+    .setMimeType(ContentService.MimeType.TEXT);
 }
 
 /**
  * HTTP POST Entry Point
- * Receives JSON requests from the React client.
+ * Receives JSON requests from the authorized backend proxy.
  */
 function doPost(e) {
-  var response = { success: false, message: "" };
+  var response = { success: false, error: "" };
   try {
     var requestData = JSON.parse(e.postData.contents);
+
+    // Defense-in-depth: Secret validation against Script Properties
+    var props = PropertiesService.getScriptProperties();
+    var expectedSecret = props.getProperty("APPS_SCRIPT_SECRET");
+    if (!expectedSecret || !requestData.secret || !constantTimeCompare(requestData.secret, expectedSecret)) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        error: "Unauthorized."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Defense-in-depth: Reject client-supplied spreadsheet IDs
+    if (requestData.sheetsIdMaster || requestData.sheetsIdCollection || requestData.sheetsIdCustomer || requestData.sheetsIdExpense) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        error: "Client-supplied spreadsheet IDs are forbidden."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     var action = requestData.action;
 
-    // 1. Load IDs from PropertiesService (fast, persisted)
+    // Load IDs from PropertiesService (persisted, secure)
     loadConfigFromProperties();
 
-    // Override configuration with IDs supplied in request payload
-    if (requestData.sheetsIdMaster) CONFIG.MASTER_DB_ID = requestData.sheetsIdMaster;
-    if (requestData.sheetsIdCollection) CONFIG.COLLECTION_DB_ID = requestData.sheetsIdCollection;
-    if (requestData.sheetsIdCustomer) CONFIG.CUSTOMER_DB_ID = requestData.sheetsIdCustomer;
-    if (requestData.sheetsIdExpense) CONFIG.EXPENSE_DB_ID = requestData.sheetsIdExpense;
-
-    // 2. Only open spreadsheet settings and setup sheets if config is not fully set in properties
-    var props = PropertiesService.getScriptProperties();
     var isSetupCompleted = props.getProperty("SETUP_COMPLETED") === "true";
-
     if (!isSetupCompleted || !CONFIG.MASTER_DB_ID || !CONFIG.COLLECTION_DB_ID || !CONFIG.CUSTOMER_DB_ID || !CONFIG.EXPENSE_DB_ID) {
-      if (!CONFIG.MASTER_DB_ID && requestData.sheetsIdMaster) {
-        CONFIG.MASTER_DB_ID = requestData.sheetsIdMaster;
-        saveConfigToProperties();
-      }
       loadSettingsFromSheets();
       autoSetupSheets();
       saveConfigToProperties();
@@ -428,13 +270,14 @@ function doPost(e) {
         break;
 
       default:
-        throw new Error("Action " + action + " not supported.");
+        result = { success: false, error: "Action not recognized." };
+        break;
     }
 
     response = result;
   } catch (error) {
     response.success = false;
-    response.message = error.toString();
+    response.error = "An error occurred while processing the request.";
     logErrorToSheets(error.toString());
   }
 
@@ -446,10 +289,10 @@ function doPost(e) {
  * Auto-create Spreadsheet Databases and sheets with correct headers if missing
  */
 function autoSetupSheets() {
-  // Priority: already set > PropertiesService > MASTER_SHEET_ID_OVERRIDE > active spreadsheet
+  // Priority: already set > PropertiesService > active spreadsheet
   if (!CONFIG.MASTER_DB_ID) {
     var props = PropertiesService.getScriptProperties();
-    CONFIG.MASTER_DB_ID = props.getProperty("MASTER_DB_ID") || MASTER_SHEET_ID_OVERRIDE || "";
+    CONFIG.MASTER_DB_ID = props.getProperty("MASTER_DB_ID") || "";
   }
   if (!CONFIG.MASTER_DB_ID) {
     try {
@@ -1234,12 +1077,7 @@ function getSettingsTable() {
     baseRate: parseFloat(props.getProperty("baseRate") || props.getProperty("BASE_RATE") || "8.5"),
     businessName: props.getProperty("businessName") || props.getProperty("BUSINESS_NAME") || "Gaudai AI Dairy",
     adminMobile: props.getProperty("adminMobile") || "",
-    whatsappToken: props.getProperty("whatsappToken") || props.getProperty("WHATSAPP_TOKEN") || CONFIG.WHATSAPP_TOKEN || "",
     whatsappPhoneId: props.getProperty("whatsappPhoneId") || props.getProperty("WHATSAPP_PHONE_ID") || CONFIG.WHATSAPP_PHONE_ID || "",
-    sheetsIdCollection: props.getProperty("sheetsIdCollection") || props.getProperty("COLLECTION_DB_ID") || CONFIG.COLLECTION_DB_ID || "",
-    sheetsIdCustomer: props.getProperty("sheetsIdCustomer") || props.getProperty("CUSTOMER_DB_ID") || CONFIG.CUSTOMER_DB_ID || "",
-    sheetsIdExpense: props.getProperty("sheetsIdExpense") || props.getProperty("EXPENSE_DB_ID") || CONFIG.EXPENSE_DB_ID || "",
-    sheetsIdMaster: props.getProperty("sheetsIdMaster") || props.getProperty("MASTER_DB_ID") || CONFIG.MASTER_DB_ID || MASTER_SHEET_ID_OVERRIDE || "",
     dueReminderFreq: parseInt(props.getProperty("dueReminderFreq") || "2")
   };
   
@@ -1250,16 +1088,19 @@ function getSettingsTable() {
       var sheet = ss.getSheetByName("Settings");
       if (sheet) {
         var data = sheet.getDataRange().getValues();
+        var migrationProps = {};
         for (var i = 1; i < data.length; i++) {
           var key = data[i][0];
           var val = data[i][1];
-          props.setProperty(key, String(val));
-          if (key === 'baseRate') settings.baseRate = parseFloat(val);
-          else if (key === 'businessName') settings.businessName = val;
-          else if (key === 'adminMobile') settings.adminMobile = val;
-          else if (key === 'dueReminderFreq') settings.dueReminderFreq = parseInt(val);
+          if (key === 'whatsappToken' || key === 'WHATSAPP_TOKEN') continue; // Never read token to settings
+          if (key === 'baseRate') { settings.baseRate = parseFloat(val); migrationProps['baseRate'] = String(val); }
+          else if (key === 'businessName') { settings.businessName = val; migrationProps['businessName'] = String(val); }
+          else if (key === 'adminMobile') { settings.adminMobile = val; migrationProps['adminMobile'] = String(val); }
+          else if (key === 'dueReminderFreq') { settings.dueReminderFreq = parseInt(val); migrationProps['dueReminderFreq'] = String(val); }
+          else if (key === 'whatsappPhoneId') { settings.whatsappPhoneId = val; migrationProps['whatsappPhoneId'] = String(val); }
         }
-        props.setProperty("SETTINGS_CACHED", "true");
+        migrationProps["SETTINGS_CACHED"] = "true";
+        props.setProperties(migrationProps);
       }
     } catch(e) {}
   }
@@ -1268,12 +1109,32 @@ function getSettingsTable() {
 }
 
 function updateSettingsTable(requestData) {
-  var masterId = CONFIG.MASTER_DB_ID || requestData.sheetsIdMaster;
+  var masterId = CONFIG.MASTER_DB_ID;
   if (!masterId) {
-    return { success: false, message: "Master sheet ID is missing. Please run setupMaster() from Apps Script editor first." };
+    return { success: false, error: "Master spreadsheet not configured." };
   }
-  
-  // Write to spreadsheet Settings sheet
+
+  // Allowed settings keys ONLY (never accept whatsappToken or spreadsheet IDs)
+  var ALLOWED_SETTINGS_KEYS = ['baseRate', 'businessName', 'adminMobile', 'dueReminderFreq', 'whatsappPhoneId'];
+  var filteredData = {};
+  for (var i = 0; i < ALLOWED_SETTINGS_KEYS.length; i++) {
+    var k = ALLOWED_SETTINGS_KEYS[i];
+    if (requestData[k] !== undefined && requestData[k] !== null) {
+      filteredData[k] = requestData[k];
+    }
+  }
+
+  // Update properties memory
+  var props = PropertiesService.getScriptProperties();
+  for (var key in filteredData) {
+    props.setProperty(key, String(filteredData[key]));
+  }
+
+  if (filteredData.baseRate !== undefined) props.setProperty("BASE_RATE", String(filteredData.baseRate));
+  if (filteredData.businessName !== undefined) props.setProperty("BUSINESS_NAME", String(filteredData.businessName));
+  if (filteredData.whatsappPhoneId !== undefined) props.setProperty("WHATSAPP_PHONE_ID", String(filteredData.whatsappPhoneId));
+
+  // Write allowed settings to spreadsheet Settings sheet
   try {
     var ss = SpreadsheetApp.openById(masterId);
     var sheet = ss.getSheetByName("Settings");
@@ -1283,34 +1144,12 @@ function updateSettingsTable(requestData) {
     }
     sheet.clear();
     sheet.appendRow(["key", "value"]);
-    
-    var keys = Object.keys(requestData);
-    keys.forEach(function(k) {
-      sheet.appendRow([k, requestData[k]]);
-    });
+    for (var sk in filteredData) {
+      sheet.appendRow([sk, filteredData[sk]]);
+    }
   } catch(e) {}
 
-  // Update properties memory for ultra-fast config lookup!
-  var props = PropertiesService.getScriptProperties();
-  var keys = Object.keys(requestData);
-  keys.forEach(function(k) {
-    if (requestData[k] !== undefined && requestData[k] !== null) {
-      props.setProperty(k, String(requestData[k]));
-    }
-  });
-
-  // Keep uppercase properties synchronized as well
-  if (requestData.sheetsIdMaster)     props.setProperty("MASTER_DB_ID",     requestData.sheetsIdMaster);
-  if (requestData.sheetsIdCollection) props.setProperty("COLLECTION_DB_ID", requestData.sheetsIdCollection);
-  if (requestData.sheetsIdCustomer)   props.setProperty("CUSTOMER_DB_ID",   requestData.sheetsIdCustomer);
-  if (requestData.sheetsIdExpense)    props.setProperty("EXPENSE_DB_ID",    requestData.sheetsIdExpense);
-  if (requestData.whatsappToken)      props.setProperty("WHATSAPP_TOKEN",    requestData.whatsappToken);
-  if (requestData.whatsappPhoneId)    props.setProperty("WHATSAPP_PHONE_ID", requestData.whatsappPhoneId);
-  if (requestData.baseRate)           props.setProperty("BASE_RATE",         String(requestData.baseRate));
-  if (requestData.businessName)       props.setProperty("BUSINESS_NAME",     requestData.businessName);
-  
   props.setProperty("SETTINGS_CACHED", "true");
-  
   return { success: true, message: "Settings saved successfully" };
 }
 
