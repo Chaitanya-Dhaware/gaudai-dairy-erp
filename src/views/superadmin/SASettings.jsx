@@ -23,12 +23,7 @@ export default function SASettings() {
     adminMobile: '',
     baseRate: 8.5,
     dueReminderFreq: 2,
-    whatsappToken: '',
-    whatsappPhoneId: '',
-    sheetsIdMaster: '',
-    sheetsIdCollection: '',
-    sheetsIdCustomer: '',
-    sheetsIdExpense: ''
+    whatsappPhoneId: ''
   });
 
   const refresh = async () => {
@@ -155,14 +150,16 @@ export default function SASettings() {
               />
             </FormField>
 
-            <FormField label="Permanent Access Token">
-              <Input
-                type="password"
-                value={form.whatsappToken}
-                onChange={e => setForm(f => ({ ...f, whatsappToken: e.target.value }))}
-                placeholder="<WHATSAPP_TOKEN>"
-              />
-            </FormField>
+            <div className="space-y-1.5">
+              <label className="text-caption font-semibold text-textPrimary">Permanent Access Token</label>
+              <div className="w-full px-3 py-2.5 border border-emerald-200 bg-emerald-50 rounded-xl text-caption font-medium text-emerald-800 flex items-center justify-between">
+                <span>🔒 Configured securely on server (Apps Script Properties)</span>
+                <span className="text-micro bg-emerald-200/60 text-emerald-900 px-2 py-0.5 rounded font-mono">Active</span>
+              </div>
+              <p className="text-micro text-textSecondary">
+                Token is securely stored in Google Apps Script Script Properties and never exposed to the browser.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -170,44 +167,16 @@ export default function SASettings() {
         <div className="bg-white rounded-2xl p-6 border border-black/[0.07] shadow-sm space-y-4">
           <h3 className="text-subtitle font-bold text-textPrimary flex items-center gap-2">
             <Sheet className="w-5 h-5 text-primary" />
-            Google Spreadsheet Target Documents
+            Google Spreadsheet Database Targets
           </h3>
-          <p className="text-caption text-textSecondary">
-            Paste the 44-character Google Sheet ID from your browser URL (<code className="text-micro font-mono">docs.google.com/spreadsheets/d/<b>[SHEET_ID]</b>/edit</code>).
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField label="Master Database Sheet ID">
-              <Input
-                value={form.sheetsIdMaster}
-                onChange={e => setForm(f => ({ ...f, sheetsIdMaster: e.target.value }))}
-                placeholder="Google Sheet ID"
-              />
-            </FormField>
-
-            <FormField label="Daily Milk Collection Sheet ID">
-              <Input
-                value={form.sheetsIdCollection}
-                onChange={e => setForm(f => ({ ...f, sheetsIdCollection: e.target.value }))}
-                placeholder="Google Sheet ID"
-              />
-            </FormField>
-
-            <FormField label="Customer Sales & Invoices Sheet ID">
-              <Input
-                value={form.sheetsIdCustomer}
-                onChange={e => setForm(f => ({ ...f, sheetsIdCustomer: e.target.value }))}
-                placeholder="Google Sheet ID"
-              />
-            </FormField>
-
-            <FormField label="Dairy Operational Expenses Sheet ID">
-              <Input
-                value={form.sheetsIdExpense}
-                onChange={e => setForm(f => ({ ...f, sheetsIdExpense: e.target.value }))}
-                placeholder="Google Sheet ID"
-              />
-            </FormField>
+          <div className="p-4 border border-blue-100 bg-blue-50/60 rounded-xl text-caption text-blue-900 space-y-2">
+            <div className="flex items-center space-x-2 font-semibold">
+              <span>🔒</span>
+              <span>Configured securely on server (Apps Script Properties)</span>
+            </div>
+            <p className="text-micro text-blue-800/80 leading-relaxed">
+              All database spreadsheet IDs (Master, Daily Collection, Customer Sales, Expenses) are strictly locked in server-side Script Properties for defense-in-depth security. Client-side ID override is disabled.
+            </p>
           </div>
         </div>
 

@@ -119,13 +119,7 @@ export function Settings() {
   const [baseRate, setBaseRate] = useState(8.5);
   const [businessName, setBusinessName] = useState('Gaudai AI Dairy');
   const [adminMobile, setAdminMobile] = useState('');
-  const [whatsappToken, setWhatsappToken] = useState('');
   const [whatsappPhoneId, setWhatsappPhoneId] = useState('');
-  
-  const [sheetsIdCollection, setSheetsIdCollection] = useState('');
-  const [sheetsIdCustomer, setSheetsIdCustomer] = useState('');
-  const [sheetsIdExpense, setSheetsIdExpense] = useState('');
-  const [sheetsIdMaster, setSheetsIdMaster] = useState('');
 
   // Sync settings when they are fetched from the store
   useEffect(() => {
@@ -134,12 +128,7 @@ export function Settings() {
         setBaseRate(settings.baseRate || 8.5);
         setBusinessName(settings.businessName || 'Gaudai AI Dairy');
         setAdminMobile(settings.adminMobile || '');
-        setWhatsappToken(settings.whatsappToken || '');
         setWhatsappPhoneId(settings.whatsappPhoneId || '');
-        setSheetsIdCollection(settings.sheetsIdCollection || '');
-        setSheetsIdCustomer(settings.sheetsIdCustomer || '');
-        setSheetsIdExpense(settings.sheetsIdExpense || '');
-        setSheetsIdMaster(settings.sheetsIdMaster || '');
       });
     }
   }, [settings]);
@@ -156,12 +145,7 @@ export function Settings() {
       baseRate: parseFloat(baseRate),
       businessName,
       adminMobile,
-      whatsappToken,
-      whatsappPhoneId,
-      sheetsIdCollection,
-      sheetsIdCustomer,
-      sheetsIdExpense,
-      sheetsIdMaster
+      whatsappPhoneId
     };
 
     const success = await saveSettings(updated);
@@ -343,72 +327,19 @@ export function Settings() {
             </div>
 
             <div className="space-y-4 pt-4 border-t border-black/[0.04]">
-              <h4 className="text-xs font-bold text-textSecondary uppercase tracking-widest">Google Spreadsheets IDs (गूगल शीट लिंक्स)</h4>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div>
-                  <label className="block font-semibold text-textSecondary mb-1">COLLECTION_DB ID</label>
-                  <input
-                    type="text"
-                    value={sheetsIdCollection}
-                    onChange={(e) => setSheetsIdCollection(e.target.value)}
-                    placeholder="Spreadsheet ID for Milk Collection"
-                    className="w-full px-3 py-2 border border-black/[0.08] rounded-xl font-mono text-xs bg-background"
-                  />
-                  {sheetsIdCollection && (
-                    <a href={`https://docs.google.com/spreadsheets/d/${sheetsIdCollection}/edit`} target="_blank" rel="noreferrer" className="text-[10px] text-primary hover:underline font-bold block mt-1">
-                      Open Spreadsheet (शीट उघडा) ➜
-                    </a>
-                  )}
+              <h4 className="text-xs font-bold text-textSecondary uppercase tracking-widest">
+                {isMarathi ? 'गुगल स्प्रेडशीट डेटाबेस (Google Spreadsheets)' : 'Google Spreadsheets Database'}
+              </h4>
+              <div className="p-4 border border-blue-100 bg-blue-50/60 rounded-xl text-xs text-blue-900 space-y-2">
+                <div className="flex items-center space-x-2 font-semibold">
+                  <span>🔒</span>
+                  <span>{isMarathi ? 'सर्व्हरवर सुरक्षित कॉन्फिगर केले आहे' : 'Configured securely on server (Apps Script Properties)'}</span>
                 </div>
-
-                <div>
-                  <label className="block font-semibold text-textSecondary mb-1">CUSTOMER_DB ID</label>
-                  <input
-                    type="text"
-                    value={sheetsIdCustomer}
-                    onChange={(e) => setSheetsIdCustomer(e.target.value)}
-                    placeholder="Spreadsheet ID for Sales"
-                    className="w-full px-3 py-2 border border-black/[0.08] rounded-xl font-mono text-xs bg-background"
-                  />
-                  {sheetsIdCustomer && (
-                    <a href={`https://docs.google.com/spreadsheets/d/${sheetsIdCustomer}/edit`} target="_blank" rel="noreferrer" className="text-[10px] text-primary hover:underline font-bold block mt-1">
-                      Open Spreadsheet (शीट उघडा) ➜
-                    </a>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-textSecondary mb-1">EXPENSE_DB ID</label>
-                  <input
-                    type="text"
-                    value={sheetsIdExpense}
-                    onChange={(e) => setSheetsIdExpense(e.target.value)}
-                    placeholder="Spreadsheet ID for Expenses"
-                    className="w-full px-3 py-2 border border-black/[0.08] rounded-xl font-mono text-xs bg-background"
-                  />
-                  {sheetsIdExpense && (
-                    <a href={`https://docs.google.com/spreadsheets/d/${sheetsIdExpense}/edit`} target="_blank" rel="noreferrer" className="text-[10px] text-primary hover:underline font-bold block mt-1">
-                      Open Spreadsheet (शीट उघडा) ➜
-                    </a>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-textSecondary mb-1">MASTER_ACCOUNTS_DB ID</label>
-                  <input
-                    type="text"
-                    value={sheetsIdMaster}
-                    onChange={(e) => setSheetsIdMaster(e.target.value)}
-                    placeholder="Spreadsheet ID for Master financial sheets"
-                    className="w-full px-3 py-2 border border-black/[0.08] rounded-xl font-mono text-xs bg-background"
-                  />
-                  {sheetsIdMaster && (
-                    <a href={`https://docs.google.com/spreadsheets/d/${sheetsIdMaster}/edit`} target="_blank" rel="noreferrer" className="text-[10px] text-primary hover:underline font-bold block mt-1">
-                      Open Spreadsheet (शीट उघडा) ➜
-                    </a>
-                  )}
-                </div>
+                <p className="text-[11px] text-blue-800/80 leading-relaxed">
+                  {isMarathi 
+                    ? 'सर्व स्प्रेडशीट आयडी (Collection, Customer, Expense, Master) आता सुरक्षेसाठी थेट Google Apps Script Properties मध्ये लॉक केलेले आहेत. क्लायंटकडून आयडी बदलता येत नाहीत.' 
+                    : 'All database spreadsheet IDs (Collection, Customer, Expense, Master) are locked in server-side Google Apps Script Properties for defense-in-depth security.'}
+                </p>
               </div>
             </div>
 
@@ -444,14 +375,16 @@ export function Settings() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-textSecondary mb-2">WhatsApp API Access Token</label>
-                <input
-                  type="password"
-                  value={whatsappToken}
-                  onChange={(e) => setWhatsappToken(e.target.value)}
-                  placeholder="<WHATSAPP_TOKEN>"
-                  className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background font-mono"
-                />
+                <label className="block text-xs font-semibold text-textSecondary mb-2">
+                  {isMarathi ? 'व्हॉट्सॲप ॲक्सेस टोकन' : 'WhatsApp API Access Token'}
+                </label>
+                <div className="w-full px-3 py-2.5 border border-emerald-200 bg-emerald-50 rounded-xl text-xs font-medium text-emerald-800 flex items-center justify-between">
+                  <span>🔒 {isMarathi ? 'सर्व्हरवर सुरक्षित कॉन्फिगर केले आहे' : 'Configured securely on server (Apps Script Properties)'}</span>
+                  <span className="text-[10px] bg-emerald-200/60 text-emerald-900 px-2 py-0.5 rounded font-mono">Active</span>
+                </div>
+                <p className="text-[11px] text-textSecondary mt-1">
+                  {isMarathi ? 'टोकन सुरक्षिततेसाठी सर्व्हर स्क्रिप्ट प्रॉपर्टीजमध्ये साठवले जाते.' : 'Access token is securely managed in server script properties and never exposed to the client.'}
+                </p>
               </div>
 
               <div>

@@ -12,7 +12,7 @@
 | **Phase 1** | Authentication & Client Lockdown (Remove Demo Bypass, Add Tests, Auth Emulator Docs) | ✅ Complete |
 | **Phase 2** | Secure Serverless Backend Proxy (`/api/*`) & Defense-in-Depth in `Code.gs` | ✅ Complete |
 | **Phase 3** | Database & Access Control Hardening (`firestore.rules` + Emulator Tests) | ⬜ Not Started |
-| **Phase 4** | Frontend Egress Refactor (Eliminate Direct Calls to Gemini, Apps Script & Identity Toolkit) | ⬜ Not Started |
+| **Phase 4** | Frontend Egress Refactor (Eliminate Direct Calls to Gemini, Apps Script & Identity Toolkit) | ✅ Complete |
 | **Phase 5** | Secure File Import (Replace `xlsx` with `papaparse` & `exceljs`, Lazy Loading, Limits, Audit) | ⬜ Not Started |
 | **Phase 6** | Production Polish, UI/UX, Meta, Security Headers & Regression Verification | ⬜ Not Started |
 
@@ -214,10 +214,113 @@ All 36 actions present in the `Code.gs` switch statement are audited against `RO
 
 ---
 
+## Phase 4 Execution Summary
+
+### Completed Tasks & Phase 4 Verification
+1. **Unified Client API Gateway (`src/utils/apiClient.js`):**
+   - Implemented `apiRequest`, `callGasProxy`, `callGemini`, and `callUsersApi`.
+   - Obtains fresh Firebase ID token via `getIdToken(false)`.
+   - On 401 Unauthorized: automatically triggers a single forced token refresh via `getIdToken(true)` and retries. If the retry fails or the token refresh rejects, gracefully invokes signout and returns bilingual error.
+   - On 403 Forbidden: returns clear bilingual rejection without logging out: `"तुम्हाला ही कृती करण्याची परवानगी नाही / You do not have permission to perform this action."`
+   - On 5xx Server Errors: shields internal server stack traces with client-safe bilingual message: `"सर्व्हर त्रुटी आली. कृपया थोड्या वेळाने पुन्हा प्रयत्न करा / A server error occurred. Please try again later."`
+2. **Refactored Frontend Egress (`api.js`, `firestoreService.js`, `gemini.js`, `superAdminService.js`):**
+   - Purged `APPS_SCRIPT_URL` and `VITE_APPS_SCRIPT_URL` from all frontend modules. All spreadsheet operations route through `callGasProxy()`.
+   - Purged `VITE_GEMINI_API_KEY` and direct calls to `generativelanguage.googleapis.com`. AI OCR and chat route through `callGemini()`. Added client-side HTML5 Canvas receipt image resizing (max 1600px, 0.8 JPEG quality) with bilingual 4MB file limit guard.
+   - Purged `FIREBASE_API_KEY` and direct REST calls to `identitytoolkit.googleapis.com`. User creation and updates consume `/api/users`. Password reset uses official Firebase Auth SDK `sendPasswordResetEmail()`, with ephemeral admin reset links returned over HTTPS and copied directly to clipboard (never written to Firestore or logs).
+   - Sanitized `saveSettings()` in `firestoreService.js` to strip `whatsappToken` and `sheetsId*` before writing to Firestore `settings/general`.
+3. **Hardened Background Sync Queue (`src/utils/syncQueue.js`):**
+   - Directs all spreadsheet synchronizations via `callGasProxy(action, { ...payload, idempotencyKey: job.id })`.
+   - Deduplicates jobs using deterministic operation IDs.
+   - Permanent 4xx errors (401, 403, 400) do NOT retry endlessly; immediately marked as failed, logged to Firestore `sync_failures` collection, and removed from queue.
+   - Transient network and 5xx errors retry with exponential backoff up to 5 attempts.
+4. **Store & Settings UI Lockdown:**
+   - Removed `sheetsIdCollection`, `sheetsIdCustomer`, and `sheetsIdExpense` from `clearAllTransactions()` in `appStore.js` (relying on server-side Script Properties).
+   - Replaced editable `whatsappToken` and spreadsheet ID inputs in `Settings.jsx` and `SASettings.jsx` with secure server-managed status indicators.
+   - Refactored `HomeDashboard.jsx` spreadsheet open buttons to retrieve authorized tab URLs via `callGasProxy('getSpreadsheetTabUrl')`.
+   - Updated `SASync.jsx` to reflect locked server-side script properties.
+5. **Environment & Bundle Hardening:**
+   - Removed obsolete `<link rel="dns-prefetch" href="https://script.google.com">` from `index.html`.
+   - Removed `VITE_GEMINI_API_KEY` and `VITE_APPS_SCRIPT_URL` from `.env`.
+   - Refactored `firebase.js` to access `import.meta.env` strictly via static property access, preventing Vite from serializing arbitrary env vars into the production bundle.
+   - Verified production build with sentinel env values (`VITE_GEMINI_API_KEY=SENTINEL_GEMINI`, `VITE_APPS_SCRIPT_URL=SENTINEL_GAS`): bundle leaks test proves zero occurrences of sentinel variables, `script.google.com/macros`, or `generativelanguage.googleapis.com` in `dist/`.
+6. **Automated Test Coverage:**
+   - Added `src/utils/apiClient.test.js` (11 tests covering token refresh, 403, 500 masking, network errors, and AST pattern guard).
+   - Added `src/utils/syncQueue.test.js` (4 tests covering payload sanitization, deduplication, and non-retryable 4xx drops).
+   - Added `src/utils/bundleLeaks.test.js` (4 tests verifying zero bundle leaks).
+   - Full Vitest suite passing (10 files, 69 tests passed, 13 rules tests skipped when emulator offline).
+   - Firestore Emulator rules suite passing (13/13 tests passed).
+
+---
+
 ## HUMAN ACTIONS NEEDED
 
 > [!IMPORTANT]
 > The repository is public; therefore, treat all old keys, URLs, and IDs as already exposed. **Key rotation and service restriction matter significantly more than git history scrubbing.**
+
+### Sequential Production Deployment Order
+
+Follow this exact sequential order to deploy the hardened application with zero downtime:
+
+1. **Step 1: Set Script Properties in Google Apps Script:**
+   - Open your Google Apps Script project attached to your master spreadsheet.
+   - Navigate to **Project Settings > Script Properties** and add:
+     - `APPS_SCRIPT_SECRET` = `<GENERATE_32_CHAR_RANDOM_SECRET>` (must be at least 32 characters)
+     - `MASTER_DB_ID` = `<PRODUCTION_MASTER_SHEET_ID>`
+     - `COLLECTION_DB_ID` = `<PRODUCTION_COLLECTION_SHEET_ID>`
+     - `CUSTOMER_DB_ID` = `<PRODUCTION_CUSTOMER_SHEET_ID>`
+     - `EXPENSE_DB_ID` = `<PRODUCTION_EXPENSE_SHEET_ID>`
+     - `WHATSAPP_TOKEN` = `<ROTATED_WHATSAPP_TOKEN>`
+     - `WHATSAPP_PHONE_ID` = `<WHATSAPP_PHONE_ID>`
+
+2. **Step 2: Deploy New `Code.gs`:**
+   - In Apps Script editor, copy the contents of `google-apps-script/Code.gs`.
+   - Click **Deploy > New Deployment** (Type: Web App, Execute as: Me, Access: Anyone).
+   - Copy the new Web App URL (do not archive the old deployment yet until smoke testing completes).
+
+3. **Step 3: Configure Vercel Server Environment Variables:**
+   - In Vercel Project Settings -> **Environment Variables**, set:
+     - `FIREBASE_PROJECT_ID` = `<FIREBASE_PROJECT_ID>`
+     - `FIREBASE_CLIENT_EMAIL` = `<SERVICE_ACCOUNT_CLIENT_EMAIL>`
+     - `FIREBASE_PRIVATE_KEY` = `<SERVICE_ACCOUNT_PRIVATE_KEY>`
+     - `APPS_SCRIPT_URL` = `<NEW_APPS_SCRIPT_URL>`
+     - `APPS_SCRIPT_SECRET` = `<SAME_32_CHAR_SECRET_AS_STEP_1>`
+     - `GEMINI_API_KEY` = `<NEW_ROTATED_GEMINI_KEY>`
+     - `GEMINI_MODEL` = `gemini-2.0-flash`
+     - `WHATSAPP_TOKEN` = `<ROTATED_WHATSAPP_TOKEN>`
+     - *(Optional)* `UPSTASH_REDIS_REST_URL` & `UPSTASH_REDIS_REST_TOKEN`
+   - Check **Mark as Sensitive** for each secret in Vercel.
+
+4. **Step 4: Deploy Frontend & Serverless Proxy to Vercel:**
+   - Merge Phase 4 branch to production / trigger Vercel deployment.
+   - Vercel automatically deploys the frontend SPA and builds the `/api/*` serverless routes.
+
+5. **Step 5: Perform Smoke Tests:**
+   - Log in with authorized staff, accountant, admin, and superadmin accounts.
+   - Test milk collection entry, customer sale, expense creation, and spreadsheet tab opening.
+   - Verify receipts OCR via Gaudai Chat.
+   - Verify Superadmin user management.
+
+6. **Step 6: Archive Old Apps Script Deployments:**
+   - In Apps Script editor, click **Deploy > Manage Deployments**.
+   - Select each **OLD** deployment version and click **Archive**.
+   - Verify that requests to the old deployment URL fail or return Unauthorized.
+
+7. **Step 7: Deploy Firestore Security Rules:**
+   - Run from terminal:
+     ```bash
+     firebase deploy --only firestore:rules
+     ```
+   - Verify rules enforcement via Firebase Console.
+
+---
+
+### Sync Queue Idempotency Key Architecture
+- Every mutation action (`addMilkCollection`, `addSale`, `recordPayment`, `addExpense`, `deleteExpense`, `registerFarmer`, `addCustomer`) generates a unique deterministic operation ID (e.g. `col_E1794932642719`, `sale_B1794932642723`, `custpay_PAY1794932642727`).
+- The operation ID is passed as `idempotencyKey` through `/api/gas-proxy` to `Code.gs`.
+- If a temporary network interruption causes the client to retry a sync job, the Google Apps Script backend verifies the idempotency key against the transaction ledger, preventing duplicate row insertions.
+- Permanent client errors (400, 401, 403) are never retried in an infinite loop; they are automatically written to Firestore `sync_failures` and removed from the active queue.
+
+---
 
 ### 1. Immediate Secret Revocation & Restriction
 - [ ] **Revoke Old Google Gemini Key Immediately:**

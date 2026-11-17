@@ -12,8 +12,7 @@ import {
 
 import { initMockDB } from './api';
 
-const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || '';
-const IS_MOCK_MODE = !APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('placeholder');
+const IS_MOCK_MODE = Boolean(import.meta.env?.VITE_USE_MOCK_DB === 'true');
 
 // Safe parsing helper to prevent NaN propagation
 const getSafeFloat = (val) => {
@@ -1063,14 +1062,23 @@ export async function saveDailySpreadsheetMapping(data) {
 
 /**
  * Save settings to Firestore.
+ * Strips any sensitive tokens and spreadsheet IDs prior to writing.
  */
 export async function saveSettings(settings) {
+  const sanitized = {
+    baseRate: parseFloat(settings.baseRate) || 8.5,
+    businessName: settings.businessName || 'Gaudai AI Dairy',
+    adminMobile: settings.adminMobile || '',
+    whatsappPhoneId: settings.whatsappPhoneId || '',
+    dueReminderFreq: parseInt(settings.dueReminderFreq, 10) || 2
+  };
+
   if (IS_MOCK_MODE) {
-    localStorage.setItem('GAUDAI_SETTINGS', JSON.stringify(settings));
+    localStorage.setItem('GAUDAI_SETTINGS', JSON.stringify(sanitized));
     return { success: true, message: 'Settings saved' };
   }
   try {
-    await setDoc(doc(db, 'settings', 'general'), settings);
+    await setDoc(doc(db, 'settings', 'general'), sanitized);
     return { success: true, message: 'Settings saved' };
   } catch (err) {
     console.error('saveSettings error:', err);

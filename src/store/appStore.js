@@ -34,12 +34,7 @@ export const useAppStore = create((set, get) => ({
     baseRate: 8.5,
     businessName: 'Gaudai AI Dairy',
     adminMobile: '',
-    whatsappToken: '',
     whatsappPhoneId: '',
-    sheetsIdCollection: '',
-    sheetsIdCustomer: '',
-    sheetsIdExpense: '',
-    sheetsIdMaster: '',
     dueReminderFreq: 2
   },
 
@@ -278,10 +273,9 @@ export const useAppStore = create((set, get) => ({
         // Recompute summary
         get().refreshSummary();
 
-        // Background sync to Google Sheets
+        // Background sync to Google Sheets via proxy
         enqueueSyncJob('addMilkCollection', {
-          ...entry,
-          sheetsIdCollection: settings.sheetsIdCollection
+          ...entry
         }, `col_${entry.entry_id}`);
 
         return true;
@@ -327,10 +321,8 @@ export const useAppStore = create((set, get) => ({
         get().refreshSummary();
 
         // Background sync
-        const settings = get().settings;
         enqueueSyncJob('markFarmerPaid', { 
-          entryId, amount, 
-          sheetsIdCollection: settings.sheetsIdCollection 
+          entryId, amount
         }, `pay_${entryId}_${Date.now()}`);
 
         return true;
@@ -511,10 +503,8 @@ export const useAppStore = create((set, get) => ({
         invalidateCaches(['sales', 'customers', 'summary']);
         get().refreshSummary();
 
-        const settings = get().settings;
         enqueueSyncJob('addSale', {
-          ...sale,
-          sheetsIdCustomer: settings.sheetsIdCustomer
+          ...sale
         }, `sale_${sale.bill_id}`);
 
         return true;
@@ -600,12 +590,10 @@ export const useAppStore = create((set, get) => ({
         invalidateCaches(['customers', 'sales', 'summary']);
         get().refreshSummary();
 
-        const settings = get().settings;
         enqueueSyncJob('recordPayment', {
           payment_id: res.data.payment_id,
           customer_id: customerId, 
-          amount,
-          sheetsIdCustomer: settings.sheetsIdCustomer
+          amount
         }, `custpay_${res.data.payment_id}`);
 
         return true;
@@ -631,10 +619,8 @@ export const useAppStore = create((set, get) => ({
         invalidateCaches(['expenses', 'summary']);
         get().refreshSummary();
 
-        const settings = get().settings;
         enqueueSyncJob('addExpense', {
-          ...res.data,
-          sheetsIdExpense: settings.sheetsIdExpense
+          ...res.data
         }, `exp_${res.data.expense_id}`);
 
         return true;
@@ -658,10 +644,8 @@ export const useAppStore = create((set, get) => ({
         invalidateCaches(['expenses', 'summary']);
         get().refreshSummary();
 
-        const settings = get().settings;
         enqueueSyncJob('deleteExpense', {
-          expense_id: expenseId,
-          sheetsIdExpense: settings.sheetsIdExpense
+          expense_id: expenseId
         }, `del_exp_${expenseId}`);
 
         return true;
@@ -789,11 +773,12 @@ export const useAppStore = create((set, get) => ({
       // Save to Firestore
       const res = await FS.saveSettings(newSettings);
       if (res.success) {
+        const sanitized = res.data || newSettings;
         toast.success('सेटिंग्ज जतन झाल्या / Settings saved!');
-        set({ settings: newSettings });
-        setCached('settings', newSettings);
+        set({ settings: sanitized });
+        setCached('settings', sanitized);
         // Background sync to GAS
-        enqueueSyncJob('updateSettings', newSettings, `settings_${Date.now()}`);
+        enqueueSyncJob('updateSettings', sanitized, `settings_${Date.now()}`);
         return true;
       }
       return false;
@@ -810,13 +795,9 @@ export const useAppStore = create((set, get) => ({
   clearAllTransactions: async () => {
     set({ loading: true });
     try {
-      // Clear Google Sheets via GAS
-      const settings = get().settings;
+      // Clear Google Sheets via GAS (server-side properties resolve sheet IDs)
       await callAPI('clearTransactions', {
-        clearMaster: true,
-        sheetsIdCollection: settings.sheetsIdCollection,
-        sheetsIdCustomer: settings.sheetsIdCustomer,
-        sheetsIdExpense: settings.sheetsIdExpense
+        clearMaster: true
       });
 
       // Clear Firestore regardless of GAS result

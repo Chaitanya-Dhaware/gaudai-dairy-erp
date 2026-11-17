@@ -1,35 +1,17 @@
-// API Connector for Google Apps Script Backend
-// If APPS_SCRIPT_URL is not set or contains "placeholder", falls back to LocalStorage Mock DB for instant demo capability.
-
+// API Connector mediating Google Apps Script calls via secure /api/gas-proxy
 import { db } from './firebase';
 import { collection, doc, setDoc, updateDoc, deleteDoc, getDocs, getDoc } from 'firebase/firestore';
+import { callGasProxy } from './apiClient';
 
-const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || '';
-const IS_MOCK_MODE = !APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('placeholder');
+const IS_MOCK_MODE = Boolean(import.meta.env?.VITE_USE_MOCK_DB === 'true');
 
-// Helper to make direct requests to Google Apps Script Web App
+// Helper to make requests via secure serverless proxy (/api/gas-proxy)
 async function fetchFromAppsScript(action, payload = {}) {
-  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('placeholder')) {
-    return { success: false, message: 'Mock mode active' };
-  }
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 seconds timeout
   try {
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, ...payload }),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if (!res.ok) {
-      return { success: false, message: `HTTP error: ${res.statusText}` };
-    }
-    return await res.json();
+    const res = await callGasProxy(action, payload);
+    return res;
   } catch (err) {
-    clearTimeout(timeoutId);
-    console.error('fetchFromAppsScript error:', err);
+    console.error('fetchFromAppsScript proxy error:', err);
     return { success: false, message: err.toString() };
   }
 }
@@ -260,20 +242,12 @@ async function syncWriteToFirestore(action, responseData, payload) {
   }
 }
 
-// Sync successful direct Firestore writes back to Google Sheets
+// Sync successful direct Firestore writes back to Google Sheets via serverless proxy
 async function syncWriteToSheets(action, payload) {
-  const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || '';
-  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('placeholder')) return;
-
   try {
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, ...payload })
-    });
-    if (!res.ok) {
-      console.warn('Sheets async sync responded with error:', res.statusText);
+    const res = await callGasProxy(action, payload);
+    if (!res.success) {
+      console.warn('Sheets async sync responded with error:', res.error);
     }
   } catch (err) {
     console.error('Failed to sync write to Google Sheets:', err);
@@ -552,8 +526,8 @@ export async function callAPI(action, payload = {}) {
     try {
       if (action.startsWith('get')) {
         response = await readFromFirestore(action);
-        // If settings doc is not found in Firestore or has no sheet IDs, try to fetch from Apps Script as fallback
-        if (action === 'getSettings' && (!response.success || !response.data?.sheetsIdCollection)) {
+        // If settings doc is not found in Firestore or has no base rate, try to fetch from Apps Script via proxy as fallback
+        if (action === 'getSettings' && (!response.success || !response.data?.baseRate)) {
           console.log('Settings not found in Firestore or incomplete, querying Apps Script as fallback...');
           const gasRes = await fetchFromAppsScript('getSettings', payload);
           if (gasRes && gasRes.success && gasRes.data) {
@@ -568,45 +542,34 @@ export async function callAPI(action, payload = {}) {
         response = await writeToFirestore(action, payload);
       }
     } catch (err) {
-      console.error(`Firestore direct action ${action} failed, falling back to mock:`, err);
-      response = handleMockAPI(action, payload);
+      console.error(`Firestore direct action ${action} failed:`, err);
+      if (IS_MOCK_MODE) {
+        response = handleMockAPI(action, payload);
+      } else {
+        return { success: false, error: err.message || 'Firestore direct action failed' };
+      }
     }
   } else {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
-
-      const res = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        redirect: 'follow',
-        // Using text/plain avoids the CORS preflight OPTIONS request
-        // that Google Apps Script cannot handle. GAS still receives valid JSON.
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action, ...payload }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        throw new Error(`Apps Script Error: ${res.statusText}`);
-      }
-
-      response = await res.json();
+      response = await callGasProxy(action, payload);
     } catch (error) {
-      console.error('Apps Script Fetch Error, falling back to Firestore/Mock DB:', error);
-      // Fallback to Firestore read backup
-      if (action.startsWith('get') || action === 'getMasterFinancialSummary' || action === 'getCashFlowStatement') {
-        const firestoreResponse = await readFromFirestore(action);
-        if (firestoreResponse.success && firestoreResponse.data) {
-          if (action === 'getSettings' && !firestoreResponse.data.baseRate) {
-            // let it fallback
-          } else {
-            return firestoreResponse;
+      console.error('API call error:', error);
+      if (IS_MOCK_MODE) {
+        response = handleMockAPI(action, payload);
+      } else {
+        // Fallback to Firestore read backup
+        if (action.startsWith('get') || action === 'getMasterFinancialSummary' || action === 'getCashFlowStatement') {
+          const firestoreResponse = await readFromFirestore(action);
+          if (firestoreResponse.success && firestoreResponse.data) {
+            if (action === 'getSettings' && !firestoreResponse.data.baseRate) {
+              // let it proceed
+            } else {
+              return firestoreResponse;
+            }
           }
         }
+        return { success: false, error: error.message || 'API call failed' };
       }
-      response = handleMockAPI(action, payload);
     }
   }
 

@@ -112,21 +112,21 @@ updated: 2026-11-17T18:24:00+05:30
 ---
 
 ### Phase 4: Frontend Egress Refactor & Secret Decoupling
-**Status:** ⬜ Not Started  
+**Status:** ✅ Complete  
 **Objective:** Refactor all frontend services to consume the new `/api/*` serverless routes. Strip all direct calls to external APIs and purge `VITE_` secrets. Deploy Firestore rules once complete.  
 **Requirements:** SEC-15 (Refactor API client), SEC-16 (Refactor Gemini client), SEC-17 (Refactor User management), SEC-18 (Purge VITE_ secrets), SEC-19 (Deploy Firestore rules)
 
 **Plans:**
-- [ ] **Plan 4.1: Refactor `src/utils/api.js` and `syncQueue.js`**
+- [x] **Plan 4.1: Refactor `src/utils/api.js` and `syncQueue.js`**
   - Direct all calls to `/api/gas-proxy` passing `Authorization: Bearer <idToken>`.
   - Remove client sheet ID passing and direct Apps Script URLs.
-- [ ] **Plan 4.2: Refactor `src/utils/gemini.js`**
+- [x] **Plan 4.2: Refactor `src/utils/gemini.js`**
   - Remove `import.meta.env.VITE_GEMINI_API_KEY`.
   - Point `callGeminiWithFallback` to `/api/gemini` with current user's Firebase auth token.
-- [ ] **Plan 4.3: Refactor `src/utils/superAdminService.js` and `SAUsers.jsx`**
+- [x] **Plan 4.3: Refactor `src/utils/superAdminService.js` and `SAUsers.jsx`**
   - Remove direct `identitytoolkit.googleapis.com` calls.
   - Call `/api/users` with current user's auth token for user creation and password resets.
-- [ ] **Plan 4.4: Clean Environment Variables & Verify Zero Bundle Leaks**
+- [x] **Plan 4.4: Clean Environment Variables & Verify Zero Bundle Leaks**
   - Remove `VITE_GEMINI_API_KEY`, `VITE_APPS_SCRIPT_URL` from `.env`.
   - Keep only non-sensitive public Firebase client configs (`VITE_FIREBASE_*`).
   - *Milestone Checkpoint:* Deploy updated `firestore.rules` now that frontend calls go through proxy.

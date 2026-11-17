@@ -9,13 +9,12 @@
  */
 
 import { db, auth } from './firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import {
   collection, doc, setDoc, updateDoc, deleteDoc,
-  getDocs, getDoc, writeBatch, query, orderBy, limit, where
+  getDocs, getDoc, writeBatch, query, orderBy, limit
 } from 'firebase/firestore';
-
-const FIREBASE_PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-const FIREBASE_API_KEY    = import.meta.env.VITE_FIREBASE_API_KEY;
+import { callUsersApi } from './apiClient';
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
@@ -66,57 +65,17 @@ export async function loadAllUsers() {
 }
 
 /**
- * Create a new user via Firebase Auth REST API.
- * Immediately sends a password-reset email so the user sets their own password.
- * Writes the user profile to Firestore `users/{uid}`.
+ * Create a new user via serverless /api/users endpoint.
+ * Creates Auth account, Firestore profile, and server audit log.
+ * Returns resetLink for initial credential setup.
  */
-export async function createUser({ email, name, role }, actorUid, actorRole) {
+export async function createUser({ email, name, role }) {
   try {
-    // 1. Create Firebase Auth account with a random strong temp password
-    const tempPassword = `Temp_${Math.random().toString(36).slice(2,10)}!`;
-    const createRes = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: tempPassword, returnSecureToken: false })
-      }
-    );
-    const createData = await createRes.json();
-    if (!createRes.ok || createData.error) {
-      return { success: false, error: createData.error?.message || 'Firebase Auth create failed' };
+    const res = await callUsersApi('create', { email, name, role });
+    if (!res.success) {
+      return { success: false, error: res.error || 'Failed to create user' };
     }
-    const uid = createData.localId;
-
-    // 2. Write user profile to Firestore
-    const profile = {
-      uid,
-      email,
-      name,
-      role,
-      active: true,
-      created_at: nowISO(),
-      created_by: actorUid
-    };
-    await setDoc(doc(db, 'users', uid), profile);
-
-    // 3. Send password reset email via REST API
-    await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestType: 'PASSWORD_RESET', email })
-      }
-    );
-
-    await writeAuditLog({
-      actor: actorUid, actorRole,
-      action: 'CREATE_USER', module: 'users', recordId: uid,
-      before: null, after: profile, reason: 'Super Admin created user'
-    });
-
-    return { success: true, data: profile };
+    return { success: true, data: res.data, resetLink: res.resetLink };
   } catch (err) {
     console.error('createUser error:', err);
     return { success: false, error: err.message };
@@ -124,37 +83,16 @@ export async function createUser({ email, name, role }, actorUid, actorRole) {
 }
 
 /**
- * Update a user's profile (name, role, active) in Firestore.
- * Prevents demotion of the last superadmin.
+ * Update a user's profile (name, role, active) via serverless /api/users endpoint.
+ * Server prevents demotion or deactivation of the last superadmin.
  */
-export async function updateUser(uid, updates, actorUid, actorRole) {
+export async function updateUser(uid, updates) {
   try {
-    const userRef = doc(db, 'users', uid);
-    const snap = await getDoc(userRef);
-    if (!snap.exists()) return { success: false, error: 'User not found' };
-    const before = snap.data();
-
-    // Guard: cannot demote or deactivate the last superadmin
-    if ((updates.role && updates.role !== 'superadmin') || updates.active === false) {
-      if (before.role === 'superadmin') {
-        const allSnap = await getDocs(collection(db, 'users'));
-        const superadmins = allSnap.docs.filter(d => d.data().role === 'superadmin' && d.data().active !== false);
-        if (superadmins.length <= 1 && superadmins[0]?.id === uid) {
-          return { success: false, error: 'Cannot demote or deactivate the last active Super Admin.' };
-        }
-      }
+    const res = await callUsersApi('update', { uid, updates });
+    if (!res.success) {
+      return { success: false, error: res.error || 'Failed to update user' };
     }
-
-    const after = { ...before, ...updates, updated_at: nowISO(), updated_by: actorUid };
-    await updateDoc(userRef, { ...updates, updated_at: nowISO(), updated_by: actorUid });
-
-    await writeAuditLog({
-      actor: actorUid, actorRole,
-      action: 'UPDATE_USER', module: 'users', recordId: uid,
-      before, after, reason: updates._reason || 'Super Admin updated user profile'
-    });
-
-    return { success: true, data: after };
+    return { success: true, data: res.data };
   } catch (err) {
     console.error('updateUser error:', err);
     return { success: false, error: err.message };
@@ -162,20 +100,11 @@ export async function updateUser(uid, updates, actorUid, actorRole) {
 }
 
 /**
- * Send a password reset email to a user.
+ * Send a password reset email to a user using Firebase client SDK.
  */
 export async function resetUserPassword(email, actorUid, actorRole) {
   try {
-    const res = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestType: 'PASSWORD_RESET', email })
-      }
-    );
-    const data = await res.json();
-    if (!res.ok || data.error) return { success: false, error: data.error?.message || 'Failed' };
+    await sendPasswordResetEmail(auth, email);
 
     await writeAuditLog({
       actor: actorUid, actorRole,

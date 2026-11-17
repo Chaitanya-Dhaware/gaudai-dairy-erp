@@ -75,7 +75,19 @@ export default function SAUsers() {
         res = await createUser({ email: form.email, name: form.name, role: form.role }, currentUser.uid, currentUser.role);
       }
       if (res.success) {
-        toast.success(editing ? 'User updated!' : 'User created! Password reset email sent.');
+        toast.success(editing ? 'User updated!' : 'User created!');
+        if (res.resetLink) {
+          if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            try {
+              await navigator.clipboard.writeText(res.resetLink);
+              toast.info('Password setup link copied to clipboard to share with user.');
+            } catch {
+              window.prompt('Password setup link (copy to share with user):', res.resetLink);
+            }
+          } else {
+            window.prompt('Password setup link (copy to share with user):', res.resetLink);
+          }
+        }
         setDrawerOpen(false);
         load();
       } else {

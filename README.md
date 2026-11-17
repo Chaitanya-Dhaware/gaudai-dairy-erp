@@ -65,6 +65,39 @@ When set to `true`, the application automatically points Firebase Auth and Fires
 
 ---
 
+## Environment Variables & Architecture
+
+### Client-Side Configuration (Public)
+The browser client requires only public Firebase project identifiers:
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_APP_ID`
+- `VITE_USE_FIREBASE_EMULATOR` (dev only)
+
+**Security Rule:** No secret, private key, or backend API token may ever use the `VITE_` prefix. Any variable with `VITE_` is baked into the browser bundle.
+
+### Server-Side Secrets (Vercel Serverless `/api/*`)
+All backend secrets are stored exclusively server-side in Vercel environment variables:
+- `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (Firebase Admin SDK)
+- `APPS_SCRIPT_URL`, `APPS_SCRIPT_SECRET` (Google Apps Script shared secret proxy)
+- `GEMINI_API_KEY`, `GEMINI_MODEL` (Google AI Studio)
+- `WHATSAPP_TOKEN` (Meta WhatsApp Cloud API)
+- `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` (Optional distributed rate limiting)
+
+### Running Full-Stack Locally
+Because `npm run dev` serves only Vite frontend assets and does not execute `/api/*` serverless functions:
+- To run frontend-only against mock database or Firestore: `npm run dev`
+- To run full-stack including `/api/*` serverless functions locally:
+  ```bash
+  npm install -g vercel
+  vercel dev
+  ```
+
+---
+
 ## Available Scripts
 
 - `npm run dev` — Starts local development server with Vite.

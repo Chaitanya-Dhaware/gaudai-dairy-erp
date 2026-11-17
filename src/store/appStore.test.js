@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach, beforeAll } from 'vitest';
 
-// Force mock mode for api.js by clearing Apps Script URL in test environment
-import.meta.env.VITE_APPS_SCRIPT_URL = '';
+// Force mock mode for api.js and firestoreService.js in test environment
+import.meta.env.VITE_USE_MOCK_DB = 'true';
 
 // 1. Mock LocalStorage before importing store/api
 const localStorageStore = {};

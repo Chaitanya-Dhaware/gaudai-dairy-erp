@@ -1,11 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store/appStore';
+import { callAPI } from '../utils/api';
 import { Droplet, Users, Receipt, PieChart, TrendingUp, TrendingDown, Clock, ShieldCheck, FileSpreadsheet, ExternalLink, ArrowUpRight } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function HomeDashboard() {
   const { t, i18n } = useTranslation();
-  const { setWorkspace, todaySummary, user, settings, dataLoaded, collections } = useAppStore();
+  const { setWorkspace, todaySummary, user, dataLoaded, collections } = useAppStore();
   const isMarathi = i18n.language === 'mr';
 
   const formatCurrency = (val) => {
@@ -20,6 +21,30 @@ export function HomeDashboard() {
   const litersToday = (collections || [])
     .filter(c => c.date === today)
     .reduce((sum, c) => sum + (c.quantity || 0), 0);
+
+  const handleOpenSheet = async (type) => {
+    // Open a blank window synchronously during the user gesture to avoid popup blockers
+    const newWindow = window.open('', '_blank');
+    if (newWindow) {
+      newWindow.opener = null;
+    }
+    try {
+      const res = await callAPI('getSpreadsheetTabUrl', { type });
+      if (res && res.url) {
+        if (newWindow) {
+          newWindow.location.href = res.url;
+        } else {
+          window.open(res.url, '_blank', 'noopener,noreferrer');
+        }
+      } else {
+        if (newWindow) newWindow.close();
+        toast.error(res?.error || (isMarathi ? 'शीट उघडण्यात अडचण आली' : 'Unable to open sheet'));
+      }
+    } catch {
+      if (newWindow) newWindow.close();
+      toast.error(isMarathi ? 'सर्व्हर त्रुटी' : 'Server error');
+    }
+  };
 
   const cards = [
     {
@@ -246,33 +271,33 @@ export function HomeDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
             {
+              type: 'collection',
               emoji: '🥛',
               title: isMarathi ? 'दूध संकलन रजिस्टर' : 'Milk Collections Log',
               desc: isMarathi 
                 ? 'शेतकरी दूध संकलन नोंदी आणि प्रलंबित देयके.' 
                 : 'All farmer milk entries and outstanding dues.',
               tabName: 'Milk_Collections',
-              sheetId: settings?.sheetsIdCollection,
               ctaLabel: isMarathi ? 'शीट उघडा' : 'Open Sheet',
             },
             {
+              type: 'customer',
               emoji: '👥',
               title: isMarathi ? 'ग्राहक आणि विक्री रजिस्टर' : 'Customers & Sales Log',
               desc: isMarathi 
                 ? 'ग्राहकांची बिले, विक्री इतिहास आणि थकबाकी.' 
                 : 'Store balances, invoices and sales history.',
               tabName: 'Sales',
-              sheetId: settings?.sheetsIdCustomer,
               ctaLabel: isMarathi ? 'शीट उघडा' : 'Open Sheet',
             },
             {
+              type: 'expense',
               emoji: '💸',
               title: isMarathi ? 'खर्च रजिस्टर' : 'Expenses Log',
               desc: isMarathi 
                 ? 'सर्व प्रकारच्या व्यावसायिक खर्चाची नोंद.' 
                 : 'All operational outlays and expense entries.',
               tabName: 'Expenses',
-              sheetId: settings?.sheetsIdExpense,
               ctaLabel: isMarathi ? 'शीट उघडा' : 'Open Sheet',
             },
           ].map((sheet, i) => (
@@ -286,21 +311,14 @@ export function HomeDashboard() {
                   {isMarathi ? 'टॅब:' : 'Tab:'} <strong>{sheet.tabName}</strong>
                 </div>
               </div>
-              {sheet.sheetId ? (
-                <a
-                  href={`https://docs.google.com/spreadsheets/d/${sheet.sheetId}/edit`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-2 bg-primary hover:bg-primary-light text-white text-caption font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all"
-                >
-                  {sheet.ctaLabel}
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              ) : (
-                <button disabled className="w-full py-2 bg-black/[0.05] text-textSecondary text-caption font-semibold rounded-xl cursor-not-allowed">
-                  {isMarathi ? 'शीट आयडी सेट नाही' : 'Sheet ID not configured'}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => handleOpenSheet(sheet.type)}
+                className="w-full py-2 bg-primary hover:bg-primary-light text-white text-caption font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                {sheet.ctaLabel}
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
             </div>
           ))}
         </div>

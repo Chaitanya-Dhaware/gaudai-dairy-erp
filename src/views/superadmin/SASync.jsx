@@ -17,7 +17,7 @@ import {
 import { toast } from 'react-hot-toast';
 
 export default function SASync() {
-  const { user: currentUser, settings } = useAppStore();
+  const { user: currentUser } = useAppStore();
   const [queueStatus, setQueueStatus] = useState({ pending: 0, isProcessing: false, jobs: [] });
   const [failures, setFailures] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -174,37 +174,25 @@ export default function SASync() {
       <div className="bg-white rounded-2xl p-5 border border-black/[0.07] shadow-sm space-y-3">
         <h3 className="text-subtitle font-bold text-textPrimary flex items-center gap-2">
           <Sheet className="w-5 h-5 text-primary" />
-          Configured Google Spreadsheet Target IDs
+          Google Spreadsheet Target Configurations
         </h3>
         <p className="text-caption text-textSecondary">
-          Background jobs sync changes to these target Google Sheet files via Google Apps Script (GAS) Webhook.
+          Background jobs sync changes to target Google Sheet files via the secure serverless Google Apps Script proxy.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
-          {[
-            { label: 'Master Sheet ID', id: settings.sheetsIdMaster },
-            { label: 'Collection Sheet ID', id: settings.sheetsIdCollection },
-            { label: 'Customer Sheet ID', id: settings.sheetsIdCustomer },
-            { label: 'Expense Sheet ID', id: settings.sheetsIdExpense }
-          ].map((item, idx) => (
-            <div key={idx} className="bg-background rounded-xl p-3 border border-black/[0.05]">
-              <p className="label">{item.label}</p>
-              <p className="font-mono text-micro font-semibold text-textPrimary truncate mt-1">
-                {item.id || <span className="text-textSecondary italic">Not Configured</span>}
-              </p>
-              {item.id && (
-                <a
-                  href={`https://docs.google.com/spreadsheets/d/${item.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-micro text-primary hover:underline font-semibold mt-2"
-                >
-                  Open in Google Sheets
-                  <ArrowUpRight className="w-3 h-3" />
-                </a>
-              )}
-            </div>
-          ))}
+        <div className="p-4 border border-blue-100 bg-blue-50/60 rounded-xl text-caption text-blue-900 flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="font-semibold flex items-center gap-1.5">
+              <span>🔒</span>
+              <span>Server-Side Script Properties Managed</span>
+            </span>
+            <p className="text-micro text-blue-800/80">
+              Master, Collection, Customer, and Expense spreadsheets are locked in Google Apps Script Script Properties.
+            </p>
+          </div>
+          <span className="text-micro bg-blue-200/60 text-blue-900 px-2.5 py-1 rounded-md font-mono font-semibold">
+            Locked & Isolated
+          </span>
         </div>
       </div>
 
