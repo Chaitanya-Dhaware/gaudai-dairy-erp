@@ -7,27 +7,24 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function hasUserDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
     function isSuperAdmin() {
-      return isSignedIn() && (
-        getUserData().role == 'superadmin' ||
-        request.auth.token.email.matches('.*superadmin.*')
-      );
+      return hasUserDoc() && getUserData().get('role', '') == 'superadmin';
     }
 
     function isAdmin() {
-      return isSignedIn() && (
-        getUserData().role in ['admin', 'superadmin']
-      );
+      return hasUserDoc() && (getUserData().get('role', '') in ['admin', 'superadmin']);
     }
 
     function isStaff() {
-      return isSignedIn() && (
-        getUserData().role in ['staff', 'accountant', 'admin', 'superadmin']
-      );
+      return hasUserDoc() && (getUserData().get('role', '') in ['staff', 'accountant', 'admin', 'superadmin']);
     }
 
     // ─── USERS COLLECTION ──────────────────────────────────────────
@@ -35,8 +32,14 @@ service cloud.firestore {
       // Any authenticated user can read their own profile; Super Admin can read all
       allow read: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin() || isAdmin());
       
-      // Super Admin can create, update, or deactivate any user
-      allow create, update: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
+      // Only Super Admin can create users
+      allow create: if isSuperAdmin();
+      
+      // Super Admin can update any user; users can update their own profile but can never change role, active, or email
+      allow update: if isSuperAdmin() || (
+        isSignedIn() && request.auth.uid == userId &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'active', 'email'])
+      );
       
       // Only Super Admin can delete users (client-side protects last superadmin)
       allow delete: if isSuperAdmin();
@@ -48,7 +51,12 @@ service cloud.firestore {
       allow read: if isAdmin();
       
       // Any authenticated mutation writes an audit log (create only)
-      allow create: if isSignedIn();
+      // Must not forge identity: logged userId/actor must equal caller's uid
+      allow create: if isSignedIn() && (
+        (request.resource.data.get('userId', '') == request.auth.uid || request.resource.data.get('actor', '') == request.auth.uid) &&
+        (request.resource.data.get('userId', request.auth.uid) == request.auth.uid) &&
+        (request.resource.data.get('actor', request.auth.uid) == request.auth.uid)
+      );
       
       // Audit records are strictly immutable: no updates or deletes permitted
       allow update, delete: if false;

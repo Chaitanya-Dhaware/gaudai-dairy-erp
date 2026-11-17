@@ -31,6 +31,7 @@ export async function writeAuditLog({ actor, actorRole, action, module, recordId
     const logId = genId('AL');
     await setDoc(doc(db, 'audit_logs', logId), {
       log_id: logId,
+      userId: actor,
       actor,
       actorRole,
       action,

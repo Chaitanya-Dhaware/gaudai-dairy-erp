@@ -97,9 +97,25 @@
   - Copy the new Web App URL to Vercel env vars as `APPS_SCRIPT_URL`.
   - **CRITICAL:** Click **Deploy > Manage Deployments**, select the **OLD** deployment version(s), and click **Archive**. If not archived, the old unauthenticated version remains publicly accessible on the web!
 
-### 4. Firestore Security Rules Deployment Scheduling
-- [ ] **Deploy Rules ONLY After Phase 4 Completes:**
-  - Do NOT deploy the hardened `firestore.rules` until Phase 4 (Frontend Refactor) is fully merged and deployed. Deploying earlier will break the existing frontend before the serverless proxy is live.
+### 4. Firestore Security Rules Hotfix & Deployment
+
+> [!NOTE]
+> **Minimal Firestore Rules Hotfix Status:** Tested and verified via Firebase Emulator (`13/13` security tests passed).
+> **Test Command:** `npm run test:rules` (spawns Firestore emulator and runs [`src/firestoreRules.test.js`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/src/firestoreRules.test.js)).
+> **Verified Security Protections:**
+> - A user can read their own `users` document (first login flow), but can **never** create a user document or mutate their own `role`, `active` status, or `email`.
+> - Only a verified `superadmin` (by Firestore record `role == 'superadmin'`) can create users or modify roles.
+> - Removed the backdoor rule that treated any email containing `"superadmin"` as a superadmin (`fake_superadmin@attacker.com` is strictly blocked).
+> - Audit logs require caller identity verification (`userId` and `actor` must equal `request.auth.uid`), preventing log forgery. Audit records remain strictly immutable.
+> - All existing operational permissions (farmers, collections, customers, sales, expenses, settings read) remain untouched so the current frontend continues working seamlessly.
+
+- [ ] **Exact Deploy Command (Human Action When Ready — Do Not Deploy Automatically):**
+  ```bash
+  firebase deploy --only firestore:rules
+  ```
+  *(Note: Run `firebase login` first if not authenticated, or `npx firebase deploy --only firestore:rules`)*
+- [ ] **Phase 3 Full Rules Overhaul Note:**
+  - The comprehensive Phase 3 rules rewrite with per-role matrix lockdown will be deployed after Phase 4 serverless proxy migration is completed.
 - [ ] **Enable Firebase App Check:**
   - In Firebase Console -> App Check, register your web app with reCAPTCHA Enterprise to block non-browser scrapers and direct API abuse.
 
