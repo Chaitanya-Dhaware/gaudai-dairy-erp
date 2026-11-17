@@ -20,27 +20,32 @@
 
 ## Phase 1 Execution Summary
 
-### Completed Tasks
-1. **Purged Demo Backdoor from Login View:**
-   - Completely removed `demoUsers` array, quick demo profile selector buttons, and catch fallback in [`src/views/Login.jsx`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/src/views/Login.jsx).
-   - Preserved all user-facing UI designs and error notifications in Marathi and English.
-2. **Removed Silent Re-Auth Backdoor in Store:**
-   - Removed the silent `signInWithEmailAndPassword(auth, ..., 'password123')` demo fallback from [`src/store/appStore.js`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/src/store/appStore.js). Unauthenticated state strictly clears localStorage and sets user state to `null`.
-3. **Automated Auth Isolation Tests:**
-   - Created [`src/views/Login.test.js`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/src/views/Login.test.js) (3 passing tests):
-     - Proves failed Firebase sign-in never sets a user in `appStore`.
-     - Proves demo credentials with failed sign-in cannot grant a session.
-     - Proves unauthenticated state purges forged `localStorage` sessions.
-4. **Firebase Auth Emulator Documentation & Setup:**
+### Completed Tasks & Phase 1 Verification
+1. **Purged Demo Backdoor from Login View & Store:**
+   - Completely removed demo user accounts array, quick demo selector buttons, and catch fallback in [`src/views/Login.jsx`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/src/views/Login.jsx).
+   - Removed the silent `signInWithEmailAndPassword(auth, ..., '<DEMO_PASSWORD>')` demo fallback from [`src/store/appStore.js`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/src/store/appStore.js). Unauthenticated state strictly clears localStorage and sets user state to `null`.
+   - Verified with `git grep -nE "password123|sa_root|adm1|stf1|acc1|demoUsers|superadmin@gaudai"`: 0 occurrences remaining anywhere in codebase (only explanatory comments in tests).
+2. **Authoritative Firestore Role Resolution:**
+   - Refactored `onAuthStateChanged` and `setUser` in `appStore.js`: roles are strictly read from Firestore `users/{uid}` doc.
+   - Removed `localStorage.setItem('GAUDAI_USER_SESSION')`. Session tampering or localStorage forgery is completely ignored and overwritten with Firestore data.
+3. **Automated Auth Isolation & Component Tests (`Login.test.jsx`):**
+   - Implemented full component rendering tests using `@testing-library/react` and `jsdom`.
+   - Proves rendering `<Login />` and submitting failed Firebase credentials renders error toast and leaves store user `null`.
+   - Proves demo credentials with failed Firebase sign-in never grant any local session.
+   - Proves role is read authoritatively from Firestore and forged `localStorage` role (`superadmin`) is ignored.
+   - Tested test sensitivity: intentionally reintroduced the bypass, verified tests failed with `AssertionError`, then reverted the bypass.
+4. **Firebase Auth Emulator Guard & Production Build Check:**
    - Created [`firebase.json`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/firebase.json) configuring Auth (`9099`), Firestore (`8080`), and Emulator UI (`4000`).
-   - Added emulator connectivity logic to [`src/utils/firebase.js`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/src/utils/firebase.js) activated via `VITE_USE_FIREBASE_EMULATOR=true`.
-   - Documented step-by-step local testing instructions in [`README.md`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/README.md).
-5. **Secret Sanitization:**
+   - Guarded emulator connection in [`src/utils/firebase.js`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/src/utils/firebase.js) strictly requiring both `import.meta.env.DEV` and `VITE_USE_FIREBASE_EMULATOR === 'true'`.
+   - Added unit and production build verification in [`src/utils/firebaseEmulator.test.js`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/src/utils/firebaseEmulator.test.js), proving emulator code is eliminated in production builds.
+   - Documented local testing instructions in [`README.md`](file:///c:/Users/chait/OneDrive/Documents/AI%20assisted%20dairy%20management%20system/README.md).
+5. **Secret Sanitization & Production Bundle Audit:**
    - Replaced all exposed keys, tokens, spreadsheet IDs, and script URLs across repository files with placeholders.
-   - Re-compressed `gaudai-logo.png` at level 9 (lossless); `git grep -nE "AQ\.|AIza|EAA|script\.google\.com/macros"` returns 0 results.
+   - Built production bundle (`npm run build`) and searched `dist/` for `AIza`, `AQ.`, `EAA`, and `script.google.com/macros`: 0 secrets present.
 6. **Code Review & Quality Gate:**
-   - CodeRabbit review executed with 0 remaining findings.
-   - Full Vitest suite passing (4 test files, 25 tests passed). Production Vite build succeeding.
+   - CodeRabbit review executed on uncommitted changes: 0 new findings.
+   - All Phase 1 ESLint checks passing (0 errors).
+   - Full Vitest suite passing (5 test files, 29 tests passed).
 
 ### Notes for Next Iteration (Phase 2)
 - **Scope for Next Iteration:** Phase 2: Secure Serverless Backend Proxy (`/api/*`) & Defense-in-Depth in `Code.gs`.
@@ -72,7 +77,7 @@
 ### 2. User & Identity Audit
 - [ ] **Audit Firestore `users` Collection:**
   - Inspect the Firestore `users` collection for any unexpected `admin` or `superadmin` role, or accounts containing `superadmin` in their email.
-  - Delete or reset the passwords for demo accounts (`superadmin@gaudai.com`, `admin@gaudai.com`, `staff@gaudai.com`, `accountant@gaudai.com`).
+  - Delete or reset the passwords for demo accounts (`<DEMO_SUPERADMIN_EMAIL>`, `<DEMO_ADMIN_EMAIL>`, `<DEMO_STAFF_EMAIL>`, `<DEMO_ACCOUNTANT_EMAIL>`).
 - [ ] **Super Admin Security & MFA Note:**
   - Note: Native multi-factor authentication (MFA) requires upgrading Firebase Auth to Identity Platform (paid tier).
   - If on the free Spark plan, protect the primary superadmin account with a long, unique password (24+ random characters) and dedicated secure email.

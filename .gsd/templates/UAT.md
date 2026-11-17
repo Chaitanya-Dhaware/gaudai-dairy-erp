@@ -35,7 +35,7 @@ status: pending | in_progress | passed | failed
 - [ ] Browser dev tools open for error monitoring
 
 **Test Data:**
-- User: test@example.com / password123
+- User: test@example.com / <TEST_PASSWORD>
 - Other relevant test accounts/data
 
 ---

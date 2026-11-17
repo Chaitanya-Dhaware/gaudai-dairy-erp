@@ -17,8 +17,13 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Connect to local Firebase Emulators when explicitly enabled
-if (env.VITE_USE_FIREBASE_EMULATOR === 'true') {
+// Connect to local Firebase Emulators ONLY in development mode and when explicitly enabled
+const isDev = Boolean(import.meta.env && import.meta.env.DEV);
+const useEmulator = env.VITE_USE_FIREBASE_EMULATOR === 'true';
+
+export const isEmulatorActive = isDev && useEmulator;
+
+if (import.meta.env?.DEV && useEmulator) {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   connectFirestoreEmulator(db, '127.0.0.1', 8080);
 }

@@ -71,7 +71,7 @@ describe('Gaudai AI Dairy ERP - AppStore', () => {
     // Re-importing or resetting state of appStore
     const store = useAppStore.getState();
     // Pre-populate settings and basic data in store
-    store.setUser({ uid: 'adm1', name: 'Chaitanya Dhaware', role: 'admin', active: true, email: 'admin@gaudai.com' });
+    store.setUser({ uid: 'test_admin_uid', name: 'Test Administrator', role: 'admin', active: true, email: 'admin@test.local' });
     await store.loadAllData();
   });
 

@@ -12,6 +12,7 @@
 
 import { chatWithGemini, processImageWithGemini, processExcelWithGemini, processPDFWithGemini } from './gemini';
 import * as XLSX from 'xlsx';
+import { bulkImportCustomers } from './bulkImportService.js';
 
 // ─── SYSTEM PROMPT BUILDER ──────────────────────────────────────────
 
@@ -996,10 +997,70 @@ export async function executeAction(action, appStore) {
       }
 
       case 'OCR_CONFIRM': {
-        // Batch process OCR entries
-        const results = [];
         const entries = data.entries || [];
 
+        // Specialized Bulk Engine for Customer Imports
+        if (data.document_type === 'CUSTOMER_LIST' || data.document_type === 'CUSTOMERS') {
+          const rawEntries = entries
+            .filter(e => e.validation?.valid !== false)
+            .map((e, idx) => ({
+              shop_name: e.fields?.shop_name || e.name || '',
+              owner_name: e.fields?.owner_name || e.fields?.shop_name || e.name || '',
+              mobile: e.fields?.mobile || '',
+              address: e.fields?.address || '',
+              rowNum: idx + 1
+            }));
+
+          const currentUser = appStore.getState().user;
+          const importResult = await bulkImportCustomers(rawEntries, {
+            user: currentUser,
+            skipDuplicates: true
+          });
+
+          // Refresh store with newly imported customers
+          if (importResult.success) {
+            await appStore.getState().loadAllData();
+          }
+
+          const messageParts = [
+            importResult.success
+              ? `✅ **Customer Import Complete**`
+              : `❌ **Customer Import Incomplete / Failed**`,
+            `- **Import Job ID:** \`${importResult.jobId}\``,
+            `- **Stage:** ${importResult.stage}`,
+            `- **Total Attempted:** ${importResult.totalAttempted}`,
+            `- **Successfully Created:** ${importResult.createdCount}`,
+            `- **Updated:** ${importResult.updatedCount}`,
+            `- **Skipped (Duplicates):** ${importResult.skippedCount}`,
+            `- **Failed:** ${importResult.failedCount}`,
+            `- **Execution Time:** ${(importResult.durationMs / 1000).toFixed(2)}s`
+          ];
+
+          if (importResult.error) {
+            messageParts.push(`\n**Reason:** ${importResult.error}`);
+            messageParts.push(`**Can Retry:** ${importResult.canRetry ? 'Yes' : 'No'}`);
+          }
+
+          if (importResult.failedCount > 0) {
+            messageParts.push(`\n**Failed Entries Details:**`);
+            const failedItems = (importResult.records || []).filter(r => r.status === 'failed');
+            failedItems.slice(0, 5).forEach(f => {
+              messageParts.push(`- Row ${f.rowNum}: ${f.shop_name || 'Unknown'} — ${f.reason}`);
+            });
+            if (failedItems.length > 5) {
+              messageParts.push(`- ...and ${failedItems.length - 5} more`);
+            }
+          }
+
+          return {
+            success: importResult.success,
+            message: messageParts.join('\n'),
+            data: importResult
+          };
+        }
+
+        // Standard processing for other document types
+        const results = [];
         for (const entry of entries) {
           if (!entry.validation?.valid) continue;
 
@@ -1073,16 +1134,6 @@ export async function executeAction(action, appStore) {
               }
             }
             results.push({ name: entry.matched_name || entry.name, success });
-          } else if (data.document_type === 'CUSTOMER_LIST' || data.document_type === 'CUSTOMERS') {
-            const shopName = entry.fields?.shop_name || entry.name;
-            const ownerName = entry.fields?.owner_name || entry.name;
-            const success = await appStore.getState().addCustomer({
-              shop_name: shopName,
-              owner_name: ownerName,
-              mobile: entry.fields?.mobile || '',
-              address: entry.fields?.address || ''
-            });
-            results.push({ name: shopName, success });
           } else if (data.document_type === 'FARMER_LIST' || data.document_type === 'FARMERS') {
             const farmerName = entry.fields?.name || entry.name;
             const success = await appStore.getState().registerFarmer({

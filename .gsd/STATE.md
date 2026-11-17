@@ -14,8 +14,8 @@ updated: 2026-11-17T18:51:10+05:30
 ## Last Action
 
 - **Executed Phase 1: Authentication & Client Lockdown**:
-  - Removed `demoUsers` array, quick-click demo buttons, and demo fallback catch block in `src/views/Login.jsx`.
-  - Removed silent `signInWithEmailAndPassword(auth, ..., 'password123')` demo fallback from `src/store/appStore.js`.
+  - Removed `demo user profiles` array, quick-click demo buttons, and demo fallback catch block in `src/views/Login.jsx`.
+  - Removed silent `signInWithEmailAndPassword(auth, ..., '<DEMO_PASSWORD>')` demo fallback from `src/store/appStore.js`.
   - Added automated tests in `src/views/Login.test.js` validating auth failure isolation and forged localStorage clearing.
   - Added `firebase.json` and documented Firebase Auth/Firestore Emulator setup in `README.md`.
   - Cleaned all hardcoded keys and URLs across repository; verified `git grep` secret scanner produces 0 results.

@@ -19,7 +19,7 @@
 
 3. **Client-Side Authentication Bypass & Demo Credentials (`src/views/Login.jsx`)**
    - **Locations:** `src/views/Login.jsx` L21-26, L43-57, L184-195.
-   - **Vector:** If Firebase authentication fails (or is unreachable), the frontend catches the error and checks if the email matches hardcoded demo profiles (`superadmin@gaudai.com`, `admin@gaudai.com`, etc. with password `password123`). If matched, it sets `role: 'superadmin'` directly in the client Zustand store and triggers `loadAllData()`.
+   - **Vector:** If Firebase authentication fails (or is unreachable), the frontend catches the error and checks if the email matches hardcoded demo profiles (`<DEMO_SUPERADMIN_EMAIL>`, `<DEMO_ADMIN_EMAIL>`, etc. with password `<DEMO_PASSWORD>`). If matched, it sets `role: 'superadmin'` directly in the client Zustand store and triggers `loadAllData()`.
 
 4. **Bundled Gemini API Key & Direct Browser Calls (`src/utils/gemini.js`)**
    - **Locations:** `.env` L7, `src/utils/gemini.js` L1, L7.

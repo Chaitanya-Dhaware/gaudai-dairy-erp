@@ -60,7 +60,7 @@ Gaudai AI Dairy ERP is a dairy operations management system designed for milk co
 | `VITE_APPS_SCRIPT_URL` | `.env`, `src/utils/api.js` (L7, L265, L579), `src/utils/firestoreService.js` (L15), `src/utils/syncQueue.js` (L150), `debug_call.js` (L2), `scratch/*` | Publicly exposed URL of unauthenticated Apps Script Web App | **CRITICAL** |
 | `MASTER_SHEET_ID_OVERRIDE` | `google-apps-script/Code.gs` (L13), `debug_call.js` (L9), `scratch/*` | Committed directly in source repository | **HIGH** |
 | `WHATSAPP_TOKEN` & `PHONE_ID` | `src/views/Settings.jsx` (L163), `src/views/superadmin/SASettings.jsx` (L26), `google-apps-script/Code.gs` (L2114) | Saved into Firestore `settings/general` doc; `firestore.rules` allows any signed-in user to read `settings/*` | **CRITICAL** |
-| Demo Credentials | `src/views/Login.jsx` (L21-26) | Plaintext emails and passwords (`password123`) bundled into client code | **CRITICAL** |
+| Demo Credentials | `src/views/Login.jsx` (L21-26) | Plaintext emails and passwords (`<DEMO_PASSWORD>`) bundled into client code | **CRITICAL** |
 
 ---
 

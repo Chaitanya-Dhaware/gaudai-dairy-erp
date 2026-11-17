@@ -45,8 +45,8 @@ When set to `true`, the application automatically points Firebase Auth and Fires
 ### 4. Create Local Test Users
 1. Open the Emulator UI at `http://localhost:4000/auth`.
 2. Click **Add User** and create test accounts:
-   - `admin@test.local` / `testpassword123`
-   - `staff@test.local` / `testpassword123`
+   - `admin@test.local` / `test_password_local`
+   - `staff@test.local` / `test_password_local`
 3. In the Firestore tab (`http://localhost:4000/firestore`), create corresponding documents under `users/{uid}`:
    ```json
    {

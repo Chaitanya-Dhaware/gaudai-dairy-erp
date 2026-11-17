@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useChatStore } from '../../store/chatStore';
 import { useAppStore } from '../../store/appStore';
 import { exportToExcel } from '../../utils/gaudaiAI';
+import { bulkImportCustomers } from '../../utils/bulkImportService';
 import {
   FileSpreadsheet,
   Check,
@@ -215,135 +216,142 @@ Summarize the contents, calculate the key totals and averages, highlight the top
       const appState = useAppStore.getState();
       const baseRate = settings.baseRate || 8.5;
 
-      for (let i = 0; i < activeRows.length; i++) {
-        const row = activeRows[i];
+      if (selectedModule === 'CUSTOMERS') {
+        const customerRecords = activeRows.map((row, idx) => ({
+          shop_name: String(row[columnMapping['shop_name']] || '').trim(),
+          owner_name: String(row[columnMapping['owner_name']] || row[columnMapping['shop_name']] || '').trim(),
+          mobile: String(row[columnMapping['mobile']] || '').trim(),
+          address: String(row[columnMapping['address']] || '').trim(),
+          rowNum: idx + 1
+        }));
 
-        if (selectedModule === 'COLLECTION') {
-          const rawName = String(row[columnMapping['name']] || '').trim();
-          const rawQty = parseFloat(row[columnMapping['quantity']]) || 0;
-          const rawFat = parseFloat(row[columnMapping['fat']]) || 4.0;
-          const rawSnf = parseFloat(row[columnMapping['snf']]) || 8.5;
-          const rawDate = row[columnMapping['date']] || new Date().toISOString().split('T')[0];
-          const rawType = row[columnMapping['milk_type']] || 'Cow';
+        const importRes = await bulkImportCustomers(customerRecords, {
+          user: appState.user,
+          skipDuplicates: true
+        });
 
-          if (!rawName || rawQty <= 0) {
-            skippedCount++;
-            continue;
-          }
+        if (importRes.success) {
+          await appState.loadAllData();
+        }
 
-          // Match or find farmer
-          const matchedFarmer = farmers.find(f =>
-            f.name.toLowerCase() === rawName.toLowerCase() ||
-            f.farmer_id.toLowerCase() === rawName.toLowerCase()
-          );
+        successCount = importRes.createdCount + importRes.updatedCount;
+        skippedCount = importRes.skippedCount;
+        failedCount = importRes.failedCount;
+        if (importRes.failedCount > 0) {
+          (importRes.records || []).filter(r => r.status === 'failed').forEach(f => {
+            errorDetails.push(`Row ${f.rowNum}: ${f.shop_name || 'Customer'} — ${f.reason}`);
+          });
+        }
+      } else {
+        for (let i = 0; i < activeRows.length; i++) {
+          const row = activeRows[i];
 
-          let farmerId = matchedFarmer?.farmer_id;
+          if (selectedModule === 'COLLECTION') {
+            const rawName = String(row[columnMapping['name']] || '').trim();
+            const rawQty = parseFloat(row[columnMapping['quantity']]) || 0;
+            const rawFat = parseFloat(row[columnMapping['fat']]) || 4.0;
+            const rawSnf = parseFloat(row[columnMapping['snf']]) || 8.5;
+            const rawDate = row[columnMapping['date']] || new Date().toISOString().split('T')[0];
+            const rawType = row[columnMapping['milk_type']] || 'Cow';
 
-          // If farmer not found, auto-register them
-          if (!farmerId) {
-            const regSuccess = await appState.registerFarmer({
-              name: rawName,
-              mobile: '',
-              address: 'Imported via Spreadsheet',
-              milk_type: rawType
-            });
-            if (regSuccess) {
-              const updatedFarmers = useAppStore.getState().farmers;
-              const newlyAdded = updatedFarmers.find(f => f.name.toLowerCase() === rawName.toLowerCase());
-              farmerId = newlyAdded?.farmer_id;
+            if (!rawName || rawQty <= 0) {
+              skippedCount++;
+              continue;
             }
+
+            // Match or find farmer
+            const matchedFarmer = farmers.find(f =>
+              f.name.toLowerCase() === rawName.toLowerCase() ||
+              f.farmer_id.toLowerCase() === rawName.toLowerCase()
+            );
+
+            let farmerId = matchedFarmer?.farmer_id;
+
+            // If farmer not found, auto-register them
+            if (!farmerId) {
+              const regSuccess = await appState.registerFarmer({
+                name: rawName,
+                mobile: '',
+                address: 'Imported via Spreadsheet',
+                milk_type: rawType
+              });
+              if (regSuccess) {
+                const updatedFarmers = useAppStore.getState().farmers;
+                const newlyAdded = updatedFarmers.find(f => f.name.toLowerCase() === rawName.toLowerCase());
+                farmerId = newlyAdded?.farmer_id;
+              }
+            }
+
+            if (!farmerId) {
+              failedCount++;
+              errorDetails.push(`Row ${i + 1}: Could not find or register farmer "${rawName}"`);
+              continue;
+            }
+
+            const rate = rawFat * baseRate;
+            const totalAmount = rate * rawQty;
+
+            const saved = await appState.addMilkCollection({
+              farmer_id: farmerId,
+              date: String(rawDate).slice(0, 10),
+              milk_type: rawType,
+              quantity: rawQty,
+              fat: rawFat,
+              snf: rawSnf,
+              calculated_rate: rate,
+              total_amount: totalAmount,
+              paid_amount: 0,
+              due_amount: totalAmount
+            });
+
+            if (saved) successCount++;
+            else {
+              failedCount++;
+              errorDetails.push(`Row ${i + 1}: Failed to save collection record`);
+            }
+          } else if (selectedModule === 'FARMERS') {
+            const name = String(row[columnMapping['name']] || '').trim();
+            const mobile = String(row[columnMapping['mobile']] || '').trim();
+            const address = String(row[columnMapping['address']] || '').trim();
+            const milkType = String(row[columnMapping['milk_type']] || 'Cow').trim();
+
+            if (!name) {
+              skippedCount++;
+              continue;
+            }
+
+            // Check if farmer already exists
+            const existing = farmers.find(f => f.name.toLowerCase() === name.toLowerCase());
+            if (existing) {
+              skippedCount++;
+              continue;
+            }
+
+            const res = await appState.registerFarmer({ name, mobile, address, milk_type: milkType });
+            if (res) successCount++;
+            else failedCount++;
+          } else if (selectedModule === 'EXPENSES') {
+            const reason = String(row[columnMapping['reason']] || 'Expense').trim();
+            const amount = parseFloat(row[columnMapping['amount']]) || 0;
+            const category = String(row[columnMapping['category']] || 'Operations').trim();
+            const date = String(row[columnMapping['date']] || new Date().toISOString().split('T')[0]).slice(0, 10);
+
+            if (amount <= 0) {
+              skippedCount++;
+              continue;
+            }
+
+            const res = await appState.addExpense({
+              date,
+              reason,
+              amount,
+              category,
+              payment_method: 'Cash',
+              notes: `Imported from ${fileName}`
+            });
+            if (res) successCount++;
+            else failedCount++;
           }
-
-          if (!farmerId) {
-            failedCount++;
-            errorDetails.push(`Row ${i + 1}: Could not find or register farmer "${rawName}"`);
-            continue;
-          }
-
-          const rate = rawFat * baseRate;
-          const totalAmount = rate * rawQty;
-
-          const saved = await appState.addMilkCollection({
-            farmer_id: farmerId,
-            date: String(rawDate).slice(0, 10),
-            milk_type: rawType,
-            quantity: rawQty,
-            fat: rawFat,
-            snf: rawSnf,
-            calculated_rate: rate,
-            total_amount: totalAmount,
-            paid_amount: 0,
-            due_amount: totalAmount
-          });
-
-          if (saved) successCount++;
-          else {
-            failedCount++;
-            errorDetails.push(`Row ${i + 1}: Failed to save collection record`);
-          }
-        } else if (selectedModule === 'FARMERS') {
-          const name = String(row[columnMapping['name']] || '').trim();
-          const mobile = String(row[columnMapping['mobile']] || '').trim();
-          const address = String(row[columnMapping['address']] || '').trim();
-          const milkType = String(row[columnMapping['milk_type']] || 'Cow').trim();
-
-          if (!name) {
-            skippedCount++;
-            continue;
-          }
-
-          // Check if farmer already exists
-          const existing = farmers.find(f => f.name.toLowerCase() === name.toLowerCase());
-          if (existing) {
-            skippedCount++;
-            continue;
-          }
-
-          const res = await appState.registerFarmer({ name, mobile, address, milk_type: milkType });
-          if (res) successCount++;
-          else failedCount++;
-        } else if (selectedModule === 'CUSTOMERS') {
-          const shopName = String(row[columnMapping['shop_name']] || '').trim();
-          const ownerName = String(row[columnMapping['owner_name']] || shopName).trim();
-          const mobile = String(row[columnMapping['mobile']] || '').trim();
-          const address = String(row[columnMapping['address']] || '').trim();
-
-          if (!shopName) {
-            skippedCount++;
-            continue;
-          }
-
-          // Check duplicate
-          const existing = customers.find(c => c.shop_name.toLowerCase() === shopName.toLowerCase());
-          if (existing) {
-            skippedCount++;
-            continue;
-          }
-
-          const res = await appState.addCustomer({ shop_name: shopName, owner_name: ownerName, mobile, address });
-          if (res) successCount++;
-          else failedCount++;
-        } else if (selectedModule === 'EXPENSES') {
-          const reason = String(row[columnMapping['reason']] || 'Expense').trim();
-          const amount = parseFloat(row[columnMapping['amount']]) || 0;
-          const category = String(row[columnMapping['category']] || 'Operations').trim();
-          const date = String(row[columnMapping['date']] || new Date().toISOString().split('T')[0]).slice(0, 10);
-
-          if (amount <= 0) {
-            skippedCount++;
-            continue;
-          }
-
-          const res = await appState.addExpense({
-            date,
-            reason,
-            amount,
-            category,
-            payment_method: 'Cash',
-            notes: `Imported from ${fileName}`
-          });
-          if (res) successCount++;
-          else failedCount++;
         }
       }
 

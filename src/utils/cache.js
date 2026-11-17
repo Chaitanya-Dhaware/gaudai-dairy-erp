@@ -70,7 +70,11 @@ export function setCached(key, data) {
  * @param {string} key - Cache key to invalidate
  */
 export function invalidateCache(key) {
-  localStorage.removeItem(CACHE_PREFIX + key);
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage && typeof localStorage.removeItem === 'function') {
+      localStorage.removeItem(CACHE_PREFIX + key);
+    }
+  } catch {}
 }
 
 /**
@@ -78,19 +82,27 @@ export function invalidateCache(key) {
  * @param {string[]} keys - Array of cache keys to invalidate
  */
 export function invalidateCaches(keys) {
-  keys.forEach(key => localStorage.removeItem(CACHE_PREFIX + key));
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage && typeof localStorage.removeItem === 'function') {
+      keys.forEach(key => localStorage.removeItem(CACHE_PREFIX + key));
+    }
+  } catch {}
 }
 
 /**
  * Clear all cached data.
  */
 export function clearAllCache() {
-  const keysToRemove = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith(CACHE_PREFIX)) {
-      keysToRemove.push(key);
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage && typeof localStorage.removeItem === 'function') {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(CACHE_PREFIX)) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
     }
-  }
-  keysToRemove.forEach(key => localStorage.removeItem(key));
+  } catch {}
 }

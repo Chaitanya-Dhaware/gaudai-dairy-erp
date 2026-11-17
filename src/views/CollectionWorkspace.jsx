@@ -345,13 +345,14 @@ function MilkCollectionEntry({
 
   const baseRate = settings.baseRate || 8.5;
 
-  // Live calculations
+  // Live calculations with NaN safety
   const qtyVal = parseFloat(quantity) || 0;
   const fatVal = parseFloat(fat) || 0;
   const paidVal = parseFloat(paidAmount) || 0;
 
-  const calculatedRate = fatVal * baseRate;
-  const totalAmount = calculatedRate * qtyVal;
+  // Use safe multiplication - if fatVal is 0 or NaN, rate becomes 0
+  const calculatedRate = (fatVal > 0 ? fatVal : 0) * baseRate;
+  const totalAmount = (calculatedRate > 0 ? calculatedRate : 0) * qtyVal;
   const dueAmount = Math.max(0, totalAmount - paidVal);
 
   const handleSubmit = async (e) => {

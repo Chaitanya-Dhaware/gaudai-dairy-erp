@@ -71,11 +71,8 @@ export const useAppStore = create((set, get) => ({
 
   // Action methods
   setUser: (user) => {
-    if (user) {
-      localStorage.setItem('GAUDAI_USER_SESSION', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('GAUDAI_USER_SESSION');
-    }
+    // User sessions and roles are strictly managed in memory and synced via Firebase Auth/Firestore.
+    // LocalStorage is never trusted for authorization.
     set({ user });
   },
   setLoadingAuth: (loadingAuth) => set({ loadingAuth }),
@@ -870,56 +867,29 @@ onAuthStateChanged(auth, async (firebaseUser) => {
   if (firebaseUser) {
     store.setLoadingAuth(true);
     try {
+      // Authoritatively fetch user profile and role from Cloud Firestore
       const docRef = doc(db, 'users', firebaseUser.uid);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         const userData = docSnap.data();
-        if (userData && userData.name === 'Ravi Patil') {
-          userData.name = 'Chaitanya Dhaware';
-          try {
-            await setDoc(docRef, { name: 'Chaitanya Dhaware' }, { merge: true });
-          } catch (err) {
-            console.error('Failed to auto-update admin name in Firestore:', err);
-          }
-        }
         store.setUser(userData);
+        initSyncQueue();
+        await store.loadAllData();
       } else {
-        // Fallback or Auto-seed for demo testing
-        const fallbackUser = {
-          uid: firebaseUser.uid,
-          name: firebaseUser.email.split('@')[0],
-          role: firebaseUser.email.includes('superadmin') ? 'superadmin' :
-                (firebaseUser.email.includes('admin') ? 'admin' : 
-                (firebaseUser.email.includes('accountant') ? 'accountant' : 'staff')),
-          active: true,
-          email: firebaseUser.email
-        };
-        // Save to Firestore
-        await setDoc(docRef, fallbackUser);
-        store.setUser(fallbackUser);
+        // Authenticated in Auth but no Firestore record exists: do NOT grant any role
+        console.warn('Firebase user has no Firestore profile record:', firebaseUser.uid);
+        store.setUser(null);
+        toast.error('User profile not found. Please contact an administrator.');
       }
-
-      // Initialize sync queue for background Google Sheets sync
-      initSyncQueue();
-
-      // Load data from Firestore (fast, no GAS calls!)
-      await store.loadAllData();
     } catch (e) {
       console.error('Firebase profile sync error:', e);
-      // Failover to offline profile
-      store.setUser({
-        uid: firebaseUser.uid,
-        name: firebaseUser.email.split('@')[0],
-        role: 'admin',
-        active: true,
-        email: firebaseUser.email
-      });
+      store.setUser(null);
+      toast.error('Failed to load user authorization profile.');
     } finally {
       store.setLoadingAuth(false);
     }
   } else {
-    // Unauthenticated: ensure no stale session persists
-    localStorage.removeItem('GAUDAI_USER_SESSION');
+    // Unauthenticated: strictly clear user state
     store.setUser(null);
     store.setLoadingAuth(false);
   }

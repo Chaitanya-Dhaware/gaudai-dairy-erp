@@ -41,7 +41,7 @@ updated: 2026-11-17T18:24:00+05:30
 
 **Plans:**
 - [x] **Plan 1.1: Purge Demo Backdoor from Login View**
-  - Remove `demoUsers` array, demo profile quick-click buttons, and bypass fallback catch block from `src/views/Login.jsx`.
+  - Remove `demo user profiles` array, demo profile quick-click buttons, and bypass fallback catch block from `src/views/Login.jsx`.
   - Ensure failed logins show clear error notifications without altering store state.
 - [x] **Plan 1.2: Add Auth Failure & State Isolation Tests**
   - Add comprehensive Vitest test suite (`src/views/Login.test.jsx` / `src/store/appStore.test.js`) verifying failed Firebase sign-in never sets user in `appStore` or unlocks routes.
