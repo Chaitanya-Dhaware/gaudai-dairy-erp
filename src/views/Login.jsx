@@ -1,29 +1,19 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useAppStore } from '../store/appStore';
 import LanguageToggle from '../components/LanguageToggle';
 import gaudaiLogo from '../assets/gaudai-logo.png';
 import { toast } from 'react-hot-toast';
-import { Lock, Mail, ArrowRight, UserCheck } from 'lucide-react';
+import { Lock, Mail, ArrowRight } from 'lucide-react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../utils/firebase';
 
 export function Login() {
   const { t, i18n } = useTranslation();
-  const { setUser, loadAllData } = useAppStore();
   const isMarathi = i18n.language === 'mr';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Pre-configured staff profiles for rapid testing & evaluation
-  const demoUsers = [
-    { name: 'Super Admin (Root)', role: 'superadmin', email: 'superadmin@gaudai.com', password: 'password123' },
-    { name: 'Chaitanya Dhaware (Admin)', role: 'admin', email: 'admin@gaudai.com', password: 'password123' },
-    { name: 'Shankar Rao (Staff)', role: 'staff', email: 'staff@gaudai.com', password: 'password123' },
-    { name: 'Sunita Deshpande (Accountant)', role: 'accountant', email: 'accountant@gaudai.com', password: 'password123' }
-  ];
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -34,36 +24,14 @@ export function Login() {
 
     setLoading(true);
     try {
-      // 1. Attempt standard Firebase Auth sign-in
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, email.trim(), password);
       toast.success(isMarathi ? 'लॉगिन यशस्वी!' : 'Signed in successfully!');
     } catch (error) {
       console.warn('Firebase sign-in error:', error.code, error.message);
-      
-      // 2. Bypass blocker using local session details if it matches demo credentials
-      const matchedDemo = demoUsers.find(u => u.email === email.toLowerCase());
-      if (matchedDemo) {
-        setUser({
-          uid: matchedDemo.role === 'superadmin' ? 'sa_root' : (matchedDemo.role === 'admin' ? 'adm1' : (matchedDemo.role === 'staff' ? 'stf1' : 'acc1')),
-          name: matchedDemo.name.split(' (')[0],
-          role: matchedDemo.role,
-          active: true,
-          email: matchedDemo.email
-        });
-        toast.success(isMarathi ? 'डेमो प्रोफाइल (स्थानिक मोड) यशस्वी!' : 'Bypassed with local demo profile fallback!');
-        await loadAllData();
-      } else {
-        toast.error(isMarathi ? 'ईमेल किंवा पासवर्ड चुकीचा आहे' : 'Invalid email or password');
-      }
+      toast.error(isMarathi ? 'ईमेल किंवा पासवर्ड चुकीचा आहे' : 'Invalid email or password');
     } finally {
       setLoading(false);
     }
-  };
-
-  const selectDemoProfile = (profile) => {
-    setEmail(profile.email);
-    setPassword(profile.password);
-    toast.success(`${profile.name} निवडले / Profile loaded`);
   };
 
   return (
@@ -174,31 +142,6 @@ export function Login() {
               )}
             </button>
           </form>
-
-          <div className="mt-8 pt-6 border-t border-black/[0.07]">
-            <h4 className="label flex items-center gap-1.5 mb-3">
-              <UserCheck className="w-3.5 h-3.5 text-accent" />
-              <span>{isMarathi ? 'डेमो खात्याद्वारे थेट लॉगिन करा' : 'Quick Demo Profiles'}</span>
-            </h4>
-            <div className="flex flex-col space-y-2">
-              {demoUsers.map((profile, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => selectDemoProfile(profile)}
-                  className="w-full text-left px-4 py-2.5 border border-black/[0.08] rounded-xl text-caption font-medium bg-background text-textSecondary hover:bg-primary/5 hover:border-primary/30 hover:text-primary transition-all flex justify-between items-center group"
-                >
-                  <span className="group-hover:font-semibold transition-all">{profile.name}</span>
-                  <span className="text-micro bg-black/[0.06] group-hover:bg-primary/10 group-hover:text-primary px-2.5 py-1 rounded-pill uppercase font-mono tracking-wider transition-all">{profile.role}</span>
-                </button>
-              ))}
-            </div>
-            <p className="text-micro text-textSecondary text-center mt-3">
-              {isMarathi 
-                ? 'डेमो प्रोफाईल निवडा आणि वरील "प्रवेश करा" बटणावर क्लिक करा.'
-                : 'Select a demo profile, then click "Sign In" above.'}
-            </p>
-          </div>
 
         </div>
 

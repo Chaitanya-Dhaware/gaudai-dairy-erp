@@ -160,7 +160,7 @@ export default function SASettings() {
                 type="password"
                 value={form.whatsappToken}
                 onChange={e => setForm(f => ({ ...f, whatsappToken: e.target.value }))}
-                placeholder="EAAG..."
+                placeholder="<WHATSAPP_TOKEN>"
               />
             </FormField>
           </div>

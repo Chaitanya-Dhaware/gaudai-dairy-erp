@@ -9,8 +9,8 @@
  *   Option B – Visit the web app URL in a browser (doGet will bootstrap it).
  */
 
-// ─── FIRST-TIME: paste your Master Spreadsheet ID here, then run setupMaster() ───
-var MASTER_SHEET_ID_OVERRIDE = "1UJ3bGyH--6RiBPdBtDexfhxivebnqqPk0S1FIEQwJjU";
+// ─── Master Spreadsheet ID is configured via PropertiesService (Script Properties) ───
+var MASTER_SHEET_ID_OVERRIDE = "";
 
 // Global config populated at runtime via PropertiesService
 var CONFIG = {

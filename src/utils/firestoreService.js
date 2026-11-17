@@ -184,22 +184,22 @@ export function computeDashboardSummary(collections, sales, expenses, customers)
 
   const revenueToday = (sales || [])
     .filter(s => s.date === today)
-    .reduce((sum, s) => sum + (s.total_amount || 0), 0);
+    .reduce((sum, s) => sum + getSafeFloat(s.total_amount), 0);
 
   const cashInToday = (sales || [])
     .filter(s => s.date === today)
-    .reduce((sum, s) => sum + (s.paid_amount || 0), 0);
+    .reduce((sum, s) => sum + getSafeFloat(s.paid_amount), 0);
 
   const farmerPaymentsToday = (collections || [])
     .filter(c => c.date === today)
-    .reduce((sum, c) => sum + (c.paid_amount || 0), 0);
+    .reduce((sum, c) => sum + getSafeFloat(c.paid_amount !== undefined ? c.paid_amount : c.total_amount), 0);
 
   const opExpensesToday = (expenses || [])
     .filter(e => e.date === today)
-    .reduce((sum, e) => sum + (e.amount || 0), 0);
+    .reduce((sum, e) => sum + getSafeFloat(e.amount), 0);
 
   const pendingDues = (customers || [])
-    .reduce((sum, c) => sum + (c.current_due || 0), 0);
+    .reduce((sum, c) => sum + getSafeFloat(c.current_due), 0);
 
   return {
     revenueToday,
@@ -226,9 +226,9 @@ export function computeCashFlow(collections, sales, expenses) {
   let balance = 100000; // Opening balance
 
   Array.from(dates).sort().forEach(d => {
-    const cashIn = (sales || []).filter(s => s.date === d).reduce((sum, s) => sum + (s.paid_amount || 0), 0);
-    const cashOutFarmers = (collections || []).filter(c => c.date === d).reduce((sum, c) => sum + (c.paid_amount || 0), 0);
-    const cashOutOps = (expenses || []).filter(e => e.date === d).reduce((sum, e) => sum + (e.amount || 0), 0);
+    const cashIn = (sales || []).filter(s => s.date === d).reduce((sum, s) => sum + getSafeFloat(s.paid_amount), 0);
+    const cashOutFarmers = (collections || []).filter(c => c.date === d).reduce((sum, c) => sum + getSafeFloat(c.paid_amount !== undefined ? c.paid_amount : c.total_amount), 0);
+    const cashOutOps = (expenses || []).filter(e => e.date === d).reduce((sum, e) => sum + getSafeFloat(e.amount), 0);
     const cashOut = cashOutFarmers + cashOutOps;
 
     const opening = balance;

@@ -1,13 +1,52 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useChatStore } from '../../store/chatStore';
 import { useAppStore } from '../../store/appStore';
 import { Check, X, AlertTriangle, Trash2, Plus } from 'lucide-react';
+import { normalizePhoneNumber, normalizeText } from '../../utils/bulkImportService';
 
-/**
- * DataPreviewCard — Shows extracted data for user confirmation before saving.
- * Handles both single-action and batch OCR imports with interactive editing.
- */
-export default function DataPreviewCard({ action }) {
+function SingleActionCard({ action, isProcessing, rejectAction, confirmAction }) {
+  const { type, data, summary } = action;
+  return (
+    <div className="gaudai-action-card">
+      <div className="gaudai-action-card-header">
+        <span className={`badge ${getBadgeClass(type)}`}>
+          {getTypeIcon(type)} {getTypeLabel(type)}
+        </span>
+      </div>
+
+      {summary && (
+        <p style={{ fontSize: '12px', color: '#374151', margin: '0 0 8px', lineHeight: 1.5 }}>
+          {summary}
+        </p>
+      )}
+
+      <table className="gaudai-action-table">
+        <tbody>
+          {renderDataFields(type, data)}
+        </tbody>
+      </table>
+
+      <div className="gaudai-action-buttons">
+        <button
+          className="gaudai-btn cancel"
+          onClick={rejectAction}
+          disabled={isProcessing}
+        >
+          <X size={14} /> Cancel
+        </button>
+        <button
+          className="gaudai-btn confirm"
+          onClick={confirmAction}
+          disabled={isProcessing}
+        >
+          <Check size={14} /> {isProcessing ? 'Saving...' : 'Confirm & Save'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function OcrConfirmCard({ action }) {
   const { confirmAction, rejectAction, isProcessing, updatePendingActionData } = useChatStore();
   const { farmers = [], customers = [], settings = {} } = useAppStore();
   const baseRate = settings.baseRate || 8.5;
@@ -20,52 +59,7 @@ export default function DataPreviewCard({ action }) {
     setLocalEntries(action?.data?.entries || []);
   }
 
-
-  if (!action) return null;
-
-  const { type, data, summary } = action;
-
-  // Single action card (from NLP)
-  if (type !== 'OCR_CONFIRM') {
-    return (
-      <div className="gaudai-action-card">
-        <div className="gaudai-action-card-header">
-          <span className={`badge ${getBadgeClass(type)}`}>
-            {getTypeIcon(type)} {getTypeLabel(type)}
-          </span>
-        </div>
-
-        {summary && (
-          <p style={{ fontSize: '12px', color: '#374151', margin: '0 0 8px', lineHeight: 1.5 }}>
-            {summary}
-          </p>
-        )}
-
-        <table className="gaudai-action-table">
-          <tbody>
-            {renderDataFields(type, data)}
-          </tbody>
-        </table>
-
-        <div className="gaudai-action-buttons">
-          <button
-            className="gaudai-btn cancel"
-            onClick={rejectAction}
-            disabled={isProcessing}
-          >
-            <X size={14} /> Cancel
-          </button>
-          <button
-            className="gaudai-btn confirm"
-            onClick={confirmAction}
-            disabled={isProcessing}
-          >
-            <Check size={14} /> {isProcessing ? 'Saving...' : 'Confirm & Save'}
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const { data } = action;
 
   // Helper to re-run validation on an entry
   const runValidation = (entry) => {
@@ -242,10 +236,89 @@ export default function DataPreviewCard({ action }) {
     updatePendingActionData({ entries: updatedEntries });
   };
 
-  // Batch OCR card calculations
-  const entries = localEntries;
+  const isCustomerDoc = data?.document_type === 'CUSTOMER_LIST' || data?.document_type === 'CUSTOMERS';
+
+  // Compute duplicate frequencies across localEntries
+  const phoneFreq = useMemo(() => {
+    const map = new Map();
+    localEntries.forEach(e => {
+      const p = normalizePhoneNumber(e.fields?.mobile || '').phone;
+      if (p) map.set(p, (map.get(p) || 0) + 1);
+    });
+    return map;
+  }, [localEntries]);
+
+  const nameFreq = useMemo(() => {
+    const map = new Map();
+    localEntries.forEach(e => {
+      const n = normalizeText(e.fields?.shop_name || e.name || '').toLowerCase();
+      if (n) map.set(n, (map.get(n) || 0) + 1);
+    });
+    return map;
+  }, [localEntries]);
+
+  // Enhanced entry validation & status calculation
+  const entriesWithStatus = useMemo(() => {
+    return localEntries.map((entry) => {
+      const current = { ...entry };
+      const warnings = [];
+
+      if (isCustomerDoc) {
+        const shopName = normalizeText(current.fields?.shop_name || current.name || '');
+        const ownerName = normalizeText(current.fields?.owner_name || '');
+        const rawMobile = current.fields?.mobile || '';
+        const phoneNorm = normalizePhoneNumber(rawMobile);
+
+        if (!shopName && !ownerName) {
+          warnings.push("Shop name or Owner name required");
+        }
+
+        if (rawMobile && !phoneNorm.isValid) {
+          warnings.push("Invalid mobile number");
+        } else if (phoneNorm.isAmbiguous) {
+          warnings.push(`Ambiguous phone length (${phoneNorm.phone.length} digits)`);
+        }
+
+        // Check file duplicate
+        const isFileDup = (phoneNorm.phone && phoneFreq.get(phoneNorm.phone) > 1) ||
+                          (shopName && nameFreq.get(shopName.toLowerCase()) > 1);
+        current.isFileDuplicate = Boolean(isFileDup);
+
+        // Check ERP duplicate
+        const existing = (customers || []).find(c => {
+          const cPhone = normalizePhoneNumber(c.mobile || '').phone;
+          const cName = normalizeText(c.shop_name || '').toLowerCase();
+          return (phoneNorm.phone && cPhone && phoneNorm.phone === cPhone) ||
+                 (shopName && cName && shopName.toLowerCase() === cName);
+        });
+
+        current.isExistingMatch = Boolean(existing);
+        current.matchedCustomer = existing || null;
+
+        if (isFileDup) {
+          warnings.push("Duplicate record within file");
+        }
+      } else {
+        if (entry.validation?.warnings) {
+          warnings.push(...entry.validation.warnings);
+        }
+      }
+
+      current.validation = {
+        valid: warnings.length === 0,
+        warnings
+      };
+
+      return current;
+    });
+  }, [localEntries, isCustomerDoc, phoneFreq, nameFreq, customers]);
+
+  const entries = entriesWithStatus;
   const validEntries = entries.filter(e => e.validation?.valid);
   const invalidEntries = entries.filter(e => !e.validation?.valid);
+  const fileDuplicates = entries.filter(e => e.isFileDuplicate);
+  const erpDuplicates = entries.filter(e => e.isExistingMatch);
+  const toCreateEntries = entries.filter(e => e.validation?.valid && !e.isFileDuplicate && !e.isExistingMatch);
 
   return (
     <div className="gaudai-action-card">
@@ -254,9 +327,26 @@ export default function DataPreviewCard({ action }) {
           {getDocTypeIcon(data?.document_type)} {data?.document_type || 'DOCUMENT'} SCAN
         </span>
         <span style={{ fontSize: '11px', color: '#6B7280', marginLeft: 'auto' }}>
-          {validEntries.length}/{entries.length} {(data?.document_type === 'CUSTOMER_LIST' || data?.document_type === 'CUSTOMERS' || data?.document_type === 'FARMER_LIST' || data?.document_type === 'FARMERS') ? 'valid' : 'matched'}
+          {isCustomerDoc ? `${toCreateEntries.length} new to import` : `${validEntries.length}/${entries.length} valid`}
         </span>
       </div>
+
+      {/* Customer Preview Diagnostic Badges */}
+      {isCustomerDoc && (
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', padding: '8px 10px', background: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0', marginBottom: '8px', fontSize: '11px' }}>
+          <span style={{ fontWeight: 600, color: '#334155' }}>Total: {entries.length}</span>
+          <span style={{ color: '#059669', fontWeight: 600 }}>• New to Create: {toCreateEntries.length}</span>
+          {erpDuplicates.length > 0 && (
+            <span style={{ color: '#2563EB', fontWeight: 600 }}>• In ERP (Skip): {erpDuplicates.length}</span>
+          )}
+          {fileDuplicates.length > 0 && (
+            <span style={{ color: '#D97706', fontWeight: 600 }}>• File Duplicates: {fileDuplicates.length}</span>
+          )}
+          {invalidEntries.length > 0 && (
+            <span style={{ color: '#DC2626', fontWeight: 600 }}>• Review: {invalidEntries.length}</span>
+          )}
+        </div>
+      )}
 
       <div style={{ maxHeight: '350px', overflowY: 'auto', paddingRight: '4px' }}>
         <table className="gaudai-action-table">
@@ -563,15 +653,35 @@ export default function DataPreviewCard({ action }) {
                 {/* Validation Status & Delete Button */}
                 <td style={{ textAlign: 'right' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
-                    {entry.validation?.valid ? (
-                      <Check size={14} style={{ color: '#16A34A', flexShrink: 0 }} />
-                    ) : (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }} title={entry.validation?.warnings?.join(', ')}>
-                        <AlertTriangle size={12} style={{ color: '#DC2626', flexShrink: 0 }} />
-                        <span className="warning-cell" style={{ display: 'inline-block', maxWidth: '60px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {entry.validation?.warnings?.[0] || 'Invalid'}
+                    {isCustomerDoc ? (
+                      entry.isExistingMatch ? (
+                        <span style={{ fontSize: '10px', background: '#DBEAFE', color: '#1D4ED8', padding: '2px 5px', borderRadius: '4px', fontWeight: 600 }} title={`Already exists as ${entry.matchedCustomer?.customer_id}`}>
+                          In ERP
                         </span>
-                      </span>
+                      ) : entry.isFileDuplicate ? (
+                        <span style={{ fontSize: '10px', background: '#FEF3C7', color: '#B45309', padding: '2px 5px', borderRadius: '4px', fontWeight: 600 }} title="Duplicate within document">
+                          Duplicate
+                        </span>
+                      ) : entry.validation?.valid ? (
+                        <span style={{ fontSize: '10px', background: '#DCFCE7', color: '#15803D', padding: '2px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                          Ready
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '10px', background: '#FEE2E2', color: '#B91C1C', padding: '2px 5px', borderRadius: '4px', fontWeight: 600 }} title={entry.validation?.warnings?.join(', ')}>
+                          Review
+                        </span>
+                      )
+                    ) : (
+                      entry.validation?.valid ? (
+                        <Check size={14} style={{ color: '#16A34A', flexShrink: 0 }} />
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }} title={entry.validation?.warnings?.join(', ')}>
+                          <AlertTriangle size={12} style={{ color: '#DC2626', flexShrink: 0 }} />
+                          <span className="warning-cell" style={{ display: 'inline-block', maxWidth: '60px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {entry.validation?.warnings?.[0] || 'Invalid'}
+                          </span>
+                        </span>
+                      )
                     )}
                     <button
                       type="button"
@@ -615,14 +725,37 @@ export default function DataPreviewCard({ action }) {
         <button
           className="gaudai-btn confirm"
           onClick={confirmAction}
-          disabled={isProcessing || validEntries.length === 0}
+          disabled={isProcessing || (isCustomerDoc ? (toCreateEntries.length === 0 && erpDuplicates.length === 0) : validEntries.length === 0)}
         >
           <Check size={14} />
-          {isProcessing ? 'Saving...' : `Save ${validEntries.length} Entries`}
+          {isProcessing
+            ? 'Saving...'
+            : isCustomerDoc
+              ? `Confirm & Save ${toCreateEntries.length} Customers`
+              : `Save ${validEntries.length} Entries`}
         </button>
       </div>
     </div>
   );
+}
+
+export default function DataPreviewCard({ action }) {
+  const { confirmAction, rejectAction, isProcessing } = useChatStore();
+
+  if (!action) return null;
+
+  if (action.type !== 'OCR_CONFIRM') {
+    return (
+      <SingleActionCard
+        action={action}
+        isProcessing={isProcessing}
+        rejectAction={rejectAction}
+        confirmAction={confirmAction}
+      />
+    );
+  }
+
+  return <OcrConfirmCard action={action} />;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────

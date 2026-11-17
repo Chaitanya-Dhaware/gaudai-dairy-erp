@@ -1,14 +1,15 @@
 import { create } from 'zustand';
 import toast from 'react-hot-toast';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth, db } from '../utils/firebase';
+import { auth, db } from '../utils/firebase.js';
 import { doc, getDoc, setDoc, collection, getDocs, deleteDoc } from 'firebase/firestore';
 
 // New optimized service layer
-import * as FS from '../utils/firestoreService';
+import * as FS from '../utils/firestoreService.js';
+import { bulkImportCustomers } from '../utils/bulkImportService.js';
 import { enqueueSyncJob, initSyncQueue } from '../utils/syncQueue';
 import { getCached, setCached, invalidateCache, invalidateCaches, clearAllCache } from '../utils/cache';
-import { saveDailySpreadsheetMapping } from '../utils/firestoreService';
+import { saveDailySpreadsheetMapping } from '../utils/firestoreService.js';
 
 // Legacy API for settings/archive endpoints that still need GAS
 import { callAPI } from '../utils/api';
@@ -363,6 +364,23 @@ export const useAppStore = create((set, get) => ({
     } catch {
       toast.error('नोंदणी त्रुटी / Register error');
       return false;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  bulkImportCustomers: async (records, options = {}) => {
+    set({ loading: true });
+    try {
+      const res = await bulkImportCustomers(records, {
+        ...options,
+        user: get().user
+      });
+      if (res.success) {
+        invalidateCache('customers');
+        await get().loadAllData();
+      }
+      return res;
     } finally {
       set({ loading: false });
     }
@@ -900,20 +918,9 @@ onAuthStateChanged(auth, async (firebaseUser) => {
       store.setLoadingAuth(false);
     }
   } else {
-    const saved = localStorage.getItem('GAUDAI_USER_SESSION');
-    if (saved) {
-      try {
-        const savedUser = JSON.parse(saved);
-        store.setUser(savedUser);
-        initSyncQueue();
-        await store.loadAllData();
-      } catch (e) {
-        console.error('Error restoring session from localStorage:', e);
-        store.setUser(null);
-      }
-    } else {
-      store.setUser(null);
-    }
+    // Unauthenticated: ensure no stale session persists
+    localStorage.removeItem('GAUDAI_USER_SESSION');
+    store.setUser(null);
     store.setLoadingAuth(false);
   }
 });

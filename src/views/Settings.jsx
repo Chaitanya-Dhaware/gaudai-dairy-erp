@@ -453,7 +453,7 @@ export function Settings() {
                   type="password"
                   value={whatsappToken}
                   onChange={(e) => setWhatsappToken(e.target.value)}
-                  placeholder="EAAGz..."
+                  placeholder="<WHATSAPP_TOKEN>"
                   className="w-full px-3 py-2 border border-black/[0.08] rounded-xl text-sm bg-background font-mono"
                 />
               </div>

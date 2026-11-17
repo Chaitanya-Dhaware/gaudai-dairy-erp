@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, collection, getDocs } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBZZ_P7XTXziKmPpVLIminu3yP2L2RPfCg",
+  apiKey: "<FIREBASE_API_KEY>",
   authDomain: "i-assisted-dairy-management.firebaseapp.com",
   projectId: "i-assisted-dairy-management",
   storageBucket: "i-assisted-dairy-management.firebasestorage.app",
