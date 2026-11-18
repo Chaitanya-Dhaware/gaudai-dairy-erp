@@ -13,7 +13,7 @@
  *   - LocalStorage persistence for crash recovery.
  */
 
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { saveDailySpreadsheetMapping } from './firestoreService';
 import { callGasProxy } from './apiClient';
@@ -224,8 +224,10 @@ export async function processQueue(deps = {}) {
 async function logSyncFailure(job, errorMessage) {
   try {
     const failureId = `sync_fail_${Date.now()}`;
+    const currentUid = auth?.currentUser?.uid || null;
     await setDoc(doc(db, 'sync_failures', failureId), {
       id: failureId,
+      userId: currentUid,
       jobId: job.id,
       action: job.action,
       payload: JSON.stringify(job.payload).substring(0, 2000), // Truncate large payloads

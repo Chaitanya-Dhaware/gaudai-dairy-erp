@@ -219,7 +219,7 @@ All 36 actions present in the `Code.gs` switch statement are audited against `RO
 ### Phase 3 Checklist (12 Ordered Tasks)
 - [x] **Task 1: Inventory.** Search the whole src folder for every Firestore read, write, listener and batch (collection and document paths, fields written, which role screen does it). Write a table in PROGRESS.md: collection, operation, who does it, which fields. Also list what the server (Admin SDK in /api) writes, because the Admin SDK bypasses rules.
 - [x] **Task 2: Role matrix.** From the inventory and the proxy role map, propose a collection-by-role matrix (superadmin, admin, staff, accountant) for read, create, update, delete. Apply least privilege. Mark every permission you are unsure about under "DECISIONS FOR CHAITANYA" in PROGRESS.md, with the safer default applied.
-- [ ] **Task 3: Rewrite firestore.rules from deny-by-default** (match /{document=**} denies everything), with helper functions: signedIn, the user's profile read from users/{uid}, active == true, role is exactly one of the four known strings, isSuperAdmin, isAdmin, isStaff, isAccountant. Every helper must fail closed when the profile is missing or malformed.
+- [x] **Task 3: Rewrite firestore.rules from deny-by-default** (match /{document=**} denies everything), with helper functions: signedIn, the user's profile read from users/{uid}, active == true, role is exactly one of the four known strings, isSuperAdmin, isAdmin, isStaff, isAccountant. Every helper must fail closed when the profile is missing or malformed.
 - [ ] **Task 4: Users collection.** A user may read only their own document. Superadmin may read all. Clients may not create or delete users documents, and may not change role, active or email. Profile updates use an allowlist with request.resource.data.diff(resource.data).affectedKeys().hasOnly([...]). If the inventory shows no client write is needed, deny all client writes and let /api/users do it.
 - [ ] **Task 5: Settings and secrets.** No client may write the settings document if it is now handled through the proxy. No client may read any secret-like field. Confirm nothing sensitive is stored in Firestore.
 - [ ] **Task 6: Business collections (farmers, collections, customers, sales, expenses and any others found).** Apply the matrix. Validate data on create and update: required fields, correct types, string length limits, numeric ranges (litres, fat, SNF, rates and amounts cannot be negative or absurd), timestamps that cannot be set far in the future, and fields that cannot be changed after creation (ids, createdBy, createdAt). Deleting should be admin and above only, or denied if the app uses soft delete.
@@ -352,36 +352,72 @@ The following matrix synthesizes the operations audited in Task 1 with the role 
 
 ---
 
-### Decisions for Chaitanya (Safer Defaults Applied)
+### Decisions for Chaitanya (Confirmed Answers & Implementation Record)
 
-The following architectural and security permission decisions have been documented with the safest default applied in accordance with least privilege:
+The following 5 decisions have been confirmed and implemented into the security rules and application services:
 
-1. **Accountant Write Permissions on `farmers` and `collections`:**
-   - *Question:* Should users with the `accountant` role be able to register new farmers or record milk collections?
-   - *Safer Default Applied:* **DENIED (Read-Only)**. Accountants only need access to ledger data, passbooks, and financial summaries. Farmer onboarding and daily milk intake measurements are physical field operations performed by `staff` or supervised by `admin`.
-2. **Accountant Modification of Recorded `expenses`:**
-   - *Question:* In some workflows, accountants might want to correct or delete recorded expense entries.
-   - *Safer Default Applied:* **Create Allowed, Update/Delete DENIED**. Accountants and staff can register new operational expense vouchers (`addExpense`), but once an expense voucher is persisted, neither can edit or delete it. Only `admin` and `superadmin` can modify or soft-delete an existing expense record.
-3. **Client-Side Profile Mutations on `users/{uid}`:**
-   - *Question:* Should staff or accountants be able to modify their own profile attributes (e.g., `name` or `phone`) directly through Firestore client SDK?
-   - *Safer Default Applied:* **ALL Client Writes DENIED**. Allowing any client-side update on `users` introduces risks of role tampering if rule predicates have subtle bypasses. All user administration, profile updates, and activation toggles are mediated exclusively through `/api/users.js` via the Firebase Admin SDK with mandatory audit logging.
-4. **Hard Delete vs. Soft Delete for `admin`:**
-   - *Question:* Should `admin` have permission to permanently delete documents from collections or empty `trash`?
-   - *Safer Default Applied:* **Soft Delete for Admin; Permanent Purge SUPERADMIN ONLY**. Admins can move erroneous or retired records into the `trash` collection. Only `superadmin` possesses the authorization to restore records or permanently purge items from `trash`.
-5. **Access and Clearance of `sync_failures`:**
-   - *Question:* Who should be permitted to read and dismiss sync failure alerts?
-   - *Safer Default Applied:* **SUPERADMIN ONLY for Read and Delete**. Sync failure logs contain raw operation payloads and debugging diagnostics, which are managed exclusively in the Superadmin Sync Control view (`SASync.jsx`). Any authenticated user's client may *create* a failure record when a 4xx error occurs, but cannot read or manipulate the failure table.
+1. **Accountant on Farmers and Collections (Accepted Read-Only):**
+   - **Confirmed Workflow:** Farmer milk payments (`markFarmerPaid`) are recorded by collection staff in `CollectionWorkspace.jsx`, updating `collections/{entryId}` and `farmers/{farmer_id}.current_due`.
+   - **Advances & Deductions:** There is no separate advances collection. Farmer advances are logged as operational expenses in the `expenses` collection under category `'Farmer Advance'`. Because `accountant` is granted create permissions on `expenses`, accountants can log farmer advances directly without requiring write access to `collections` or `farmers`.
+   - **Access Matrix:** `accountant` is strictly **Read-Only** for `farmers` and `collections`.
+2. **Accountant Create-Only on Expenses & Mandatory Audit Logs on Update/Delete:**
+   - **Confirmed Workflow:** `accountant` and `staff` have create-only access to `expenses` (`addExpense`).
+   - **Audit Trail:** `superAdminService.updateExpense` and `superAdminService.softDeleteExpense` write mandatory, immutable entries to `audit_logs` capturing `before`, `after`, and `reason` for every modification and deletion by `admin` and `superadmin`.
+3. **Denying All Client Writes to `users` Collection:**
+   - **Codebase Audit Result:** Exhaustive search across all `.js` and `.jsx` files in `src/` confirmed that **zero client-side writes to `users` exist in application code**.
+   - **Language & Login State:** User language preference is maintained exclusively in client-side `localStorage` via `i18next-browser-languagedetector`. Session restoration in `appStore.js` performs a read-only `getDoc` on `users/{uid}`.
+   - **Administrative Route:** All user creation, activation/deactivation, and role assignments are mediated exclusively via `/api/users.js` using the privileged Firebase Admin SDK with server-side audit logs. (Complete client-write denial to `users` will be locked down in Task 4 rules, replacing the interim hotfix rule that allowed non-sensitive profile edits).
+4. **Soft Delete into `trash` for Admin & Permanent Purge for Superadmin Only:**
+   - **Confirmed Workflow:** Admins can soft-delete business records (`farmers`, `collections`, `customers`, `sales`, `expenses`).
+   - **Atomic Batch Write:** Soft deletion in `superAdminService.js` creates a backup document in `trash/{collection}_{id}` and deletes the source record in a single atomic `writeBatch`.
+   - **Restoration & Purge Authority:** In the application UI, only `superadmin` can restore documents from trash (`restoreFromTrash`) or permanently purge them (`purgeFromTrash`), with mandatory audit logging. (The rules restriction enforcing superadmin-only delete/purge on `trash` is scheduled for Task 6).
+5. **Sync Failures Logging from Offline Queue & Superadmin Clearance:**
+   - **Confirmed Workflow:** `src/utils/syncQueue.js` (`logSyncFailure`) is the sole location where failure records are written.
+   - **Client Authentication Guard:** Updated `logSyncFailure` in `src/utils/syncQueue.js` to populate `userId: auth?.currentUser?.uid || null` so writes from the user's phone satisfy `request.resource.data.userId == request.auth.uid`.
+   - **Access Matrix:** Any active authenticated user can create a failure record for their own UID. Reading and purging `sync_failures` is strictly restricted to `superadmin`.
 
 ---
 
-#### Notes for Next Iteration (Phase 3, Task 3)
-- **Completed:** 
-  - Task 1: Complete Firestore Operations Inventory across client and server.
-  - Task 2: Collection-by-Role Permission Matrix & Decisions for Chaitanya (documented with safer defaults applied).
-- **Next Task:** **Task 3: Rewrite `firestore.rules` from deny-by-default with fail-closed helpers**:
-  - Implement base rule: `match /{document=**} { allow read, write: if false; }`.
-  - Implement fail-closed helper functions: `signedIn()`, `getUserData()`, `isActive()`, role validation against 4 known strings, `isSuperAdmin()`, `isAdmin()`, `isStaff()`, `isAccountant()`.
-  - Ensure every helper fails closed when profile document is missing or malformed.
+### Task 3: Rewrite `firestore.rules` from Deny-by-Default with Fail-Closed Helpers
+
+#### 1. Implementation Highlights
+- **Deny-by-Default Root Rule:**
+  ```javascript
+  match /{document=**} {
+    allow read, write: if false;
+  }
+  ```
+- **Fail-Closed Helper Hierarchy:**
+  - `signedIn()`: Verifies `request.auth != null && request.auth.uid != null`.
+  - `hasUserDoc()`: Verifies `signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))`.
+  - `getUserData()`: Retrieves `users/{uid}` document data.
+  - `userRole()`: Safe accessor for `getUserData().get('role', '')`.
+  - `isActive()`: Requires `hasUserDoc()`, `active == true`, and role in `['superadmin', 'admin', 'staff', 'accountant']`. Fails closed if document is missing, account is inactive, or role string is malformed / improperly cased.
+  - `isSuperAdmin()`: `isActive() && userRole() == 'superadmin'`.
+  - `isAdmin()`: `isActive() && (userRole() in ['admin', 'superadmin'])`.
+  - `isStaff()`: `isActive() && (userRole() in ['staff', 'admin', 'superadmin'])`.
+  - `isAccountant()`: `isActive() && (userRole() in ['accountant', 'admin', 'superadmin'])`.
+- **Sync Failures Offline Queue Update:**
+  - Updated `src/utils/syncQueue.js` to include caller UID in persistent failure records.
+
+#### 2. Test Verification
+- Added 5 new emulator unit tests in `src/firestoreRules.test.js` under `Fail-Closed Helpers & Deny-by-Default Architecture`:
+  - Denies read/write to unmapped collections by default (`unknown_secret_collection`).
+  - Fails closed when user profile document is missing (`ghost_user`).
+  - Fails closed when user profile is marked inactive (`active: false`).
+  - Fails closed when role string is malformed or improperly cased (`role: 'Admin'` or `'intern'`).
+  - Allows active users to create sync failures for their own UID, but blocks forged failure logs claiming another UID.
+- Full emulator rules suite passing: **18/18 tests passed** (`npm run test:rules`).
+- Full Vitest suite passing: **69 passed, 18 skipped** (when emulator offline).
+- Production build passing: `npm run build` (0 errors).
+
+---
+
+#### Notes for Next Iteration (Phase 3, Task 4)
+- **Completed:** Tasks 1, 2, and 3.
+- **Next Task:** **Task 4: `users` collection rules lockdown**:
+  - Restrict `users/{userId}`: user may read only their own document; superadmin may read all.
+  - Deny all client creates, updates, and deletes (since inventory and audit confirmed zero client writes are needed and all user management is handled via `/api/users.js`).
 
 ---
 

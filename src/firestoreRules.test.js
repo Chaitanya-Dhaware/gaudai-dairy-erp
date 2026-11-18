@@ -339,4 +339,102 @@ describe('Firestore Security Rules Hotfix', () => {
       }));
     });
   });
+
+  // ─── 5. FAIL-CLOSED HELPERS & DENY-BY-DEFAULT TESTS ───────────────
+  describe('Fail-Closed Helpers & Deny-by-Default Architecture', () => {
+    it('denies read and write to unmapped collections by default', async () => {
+      const staffDb = testEnv.authenticatedContext('staff_ramesh', { email: 'ramesh@gaudai.com' }).firestore();
+      const unmappedDoc = doc(staffDb, 'unknown_secret_collection', 'doc_123');
+
+      await assertFails(getDoc(unmappedDoc));
+      await assertFails(setDoc(unmappedDoc, { secret: 'data' }));
+    });
+
+    it('fails closed when user profile document is completely missing', async () => {
+      // Authenticated in Firebase Auth, but zero Firestore document in users/ghost_user
+      const ghostDb = testEnv.authenticatedContext('ghost_user', { email: 'ghost@gaudai.com' }).firestore();
+
+      // Should not be able to create a farmer (requires isStaff())
+      await assertFails(setDoc(doc(ghostDb, 'farmers', 'F_GHOST'), {
+        name: 'Ghost Farmer',
+        mobile: '9822999999',
+        created_at: new Date().toISOString()
+      }));
+    });
+
+    it('fails closed when user profile is marked inactive (active: false)', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'users', 'deactivated_admin'), {
+          uid: 'deactivated_admin',
+          name: 'Deactivated Admin',
+          email: 'admin@gaudai.com',
+          role: 'admin',
+          active: false
+        });
+      });
+
+      const deactDb = testEnv.authenticatedContext('deactivated_admin', { email: 'admin@gaudai.com' }).firestore();
+
+      // Should be blocked from updating settings even though role is admin
+      await assertFails(updateDoc(doc(deactDb, 'settings', 'general'), { baseRate: 12.0 }));
+    });
+
+    it('fails closed when role is malformed or improperly cased', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        // Casing mismatch or unauthorized string
+        await setDoc(doc(adminDb, 'users', 'casing_user'), {
+          uid: 'casing_user',
+          name: 'Cased Admin',
+          role: 'Admin', // Capitalized - malformed
+          active: true
+        });
+        await setDoc(doc(adminDb, 'users', 'unknown_role_user'), {
+          uid: 'unknown_role_user',
+          name: 'Intern',
+          role: 'intern', // Unknown role string
+          active: true
+        });
+      });
+
+      const casedDb = testEnv.authenticatedContext('casing_user').firestore();
+      const unknownDb = testEnv.authenticatedContext('unknown_role_user').firestore();
+
+      await assertFails(updateDoc(doc(casedDb, 'settings', 'general'), { baseRate: 15.0 }));
+      await assertFails(setDoc(doc(unknownDb, 'farmers', 'F_INTERN'), { name: 'Intern Farmer' }));
+    });
+
+    it('allows signed-in user to create sync failure for own UID, but blocks for another UID', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'users', 'staff_ramesh'), {
+          uid: 'staff_ramesh',
+          name: 'Ramesh',
+          role: 'staff',
+          active: true
+        });
+      });
+
+      const staffDb = testEnv.authenticatedContext('staff_ramesh', { email: 'ramesh@gaudai.com' }).firestore();
+
+      // Valid sync failure logging
+      await assertSucceeds(setDoc(doc(staffDb, 'sync_failures', 'fail_1'), {
+        id: 'fail_1',
+        userId: 'staff_ramesh',
+        jobId: 'col_123',
+        action: 'addMilkCollection',
+        error: 'Permanent 400 error'
+      }));
+
+      // Forged sync failure claiming another user
+      await assertFails(setDoc(doc(staffDb, 'sync_failures', 'forged_fail'), {
+        id: 'forged_fail',
+        userId: 'other_user_uid',
+        jobId: 'col_999',
+        action: 'addMilkCollection',
+        error: 'Permanent 400 error'
+      }));
+    });
+  });
 });

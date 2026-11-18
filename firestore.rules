@@ -2,46 +2,73 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
+    // ─── BASE DENY-BY-DEFAULT ─────────────────────────────────────────
+    // Any document path not explicitly allowed below is unconditionally denied.
+    match /{document=**} {
+      allow read, write: if false;
     }
 
+    // ─── FAIL-CLOSED AUTHENTICATION & ROLE HELPERS ────────────────────
+    
+    // Checks if the request is authenticated with a valid UID
+    function signedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // Verifies that the user's authoritative profile document exists in users/{uid}
     function hasUserDoc() {
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
+    // Retrieves the user's authoritative profile document data
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    // Resolves role string safely; fails closed if profile missing or field omitted
+    function userRole() {
+      return getUserData().get('role', '');
+    }
+
+    // Checks that the account is active and role is exactly one of the four known strings
+    function isActive() {
+      return hasUserDoc() &&
+             getUserData().get('active', false) == true &&
+             (userRole() in ['superadmin', 'admin', 'staff', 'accountant']);
+    }
+
+    // Role-specific helpers (all fail closed if unauthenticated, inactive, or malformed)
     function isSuperAdmin() {
-      return hasUserDoc() && getUserData().get('role', '') == 'superadmin';
+      return isActive() && userRole() == 'superadmin';
     }
 
     function isAdmin() {
-      return hasUserDoc() && (getUserData().get('role', '') in ['admin', 'superadmin']);
+      return isActive() && (userRole() in ['admin', 'superadmin']);
     }
 
     function isStaff() {
-      return hasUserDoc() && (getUserData().get('role', '') in ['staff', 'accountant', 'admin', 'superadmin']);
+      return isActive() && (userRole() in ['staff', 'admin', 'superadmin']);
+    }
+
+    function isAccountant() {
+      return isActive() && (userRole() in ['accountant', 'admin', 'superadmin']);
     }
 
     // ─── USERS COLLECTION ──────────────────────────────────────────
     match /users/{userId} {
-      // Any authenticated user can read their own profile; Super Admin can read all
-      allow read: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin() || isAdmin());
+      // Any authenticated user can read their own profile; Super Admin and Admin can read all
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
       
-      // Only Super Admin can create users
+      // Super Admin can create users (Task 4 will further refine client write denial)
       allow create: if isSuperAdmin();
       
       // Super Admin can update any user; users can update their own profile but can never change role, active, or email
       allow update: if isSuperAdmin() || (
-        isSignedIn() && request.auth.uid == userId &&
+        signedIn() && request.auth.uid == userId &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'active', 'email'])
       );
       
-      // Only Super Admin can delete users (client-side protects last superadmin)
+      // Only Super Admin can delete users
       allow delete: if isSuperAdmin();
     }
 
@@ -50,9 +77,9 @@ service cloud.firestore {
       // Super Admin and Admin can view audit records
       allow read: if isAdmin();
       
-      // Any authenticated mutation writes an audit log (create only)
+      // Any authenticated user can write an audit log for their own actions
       // Must not forge identity: logged userId/actor must equal caller's uid
-      allow create: if isSignedIn() && (
+      allow create: if signedIn() && (
         (request.resource.data.get('userId', '') == request.auth.uid || request.resource.data.get('actor', '') == request.auth.uid) &&
         (request.resource.data.get('userId', request.auth.uid) == request.auth.uid) &&
         (request.resource.data.get('actor', request.auth.uid) == request.auth.uid)
@@ -64,60 +91,65 @@ service cloud.firestore {
 
     // ─── TRASH COLLECTION (Soft-Delete & Recovery) ──────────────────
     match /trash/{trashId} {
-      // Only Super Admin and Admin can view, restore, or purge items from trash
+      // Admin and Superadmin can view, soft-delete, restore, or purge items
       allow read, write, delete: if isAdmin();
     }
 
     // ─── SYNC FAILURES ─────────────────────────────────────────────
     match /sync_failures/{failureId} {
-      allow read, write, delete: if isAdmin();
+      // Superadmin-only for reading and clearing diagnostics
+      allow read, delete: if isSuperAdmin();
+      // Only active authenticated users can record a sync failure for their own UID
+      allow create: if isActive() && request.resource.data.get('userId', '') == request.auth.uid;
+      allow update: if false;
     }
 
     // ─── BUSINESS SETTINGS ─────────────────────────────────────────
     match /settings/{settingId} {
-      allow read: if isSignedIn();
+      allow read: if signedIn();
       allow write: if isAdmin();
     }
 
     // ─── OPERATIONAL ENTITIES (Farmers, Collections, Customers, etc)
     match /farmers/{farmerId} {
-      allow read: if isSignedIn();
+      allow read: if signedIn();
       allow create: if isStaff();
       allow update, delete: if isAdmin();
     }
 
     match /collections/{collectionId} {
-      allow read: if isSignedIn();
+      allow read: if signedIn();
       allow create: if isStaff();
       allow update, delete: if isAdmin();
     }
 
     match /customers/{customerId} {
-      allow read: if isSignedIn();
-      allow create: if isStaff();
+      allow read: if signedIn();
+      allow create: if isStaff() || isAccountant();
       allow update, delete: if isAdmin();
     }
 
     match /products/{productId} {
-      allow read: if isSignedIn();
+      allow read: if signedIn();
       allow create, update, delete: if isAdmin();
     }
 
     match /sales/{saleId} {
-      allow read: if isSignedIn();
-      allow create: if isStaff();
+      allow read: if signedIn();
+      allow create: if isStaff() || isAccountant();
       allow update, delete: if isAdmin();
     }
 
     match /expenses/{expenseId} {
-      allow read: if isSignedIn();
-      allow create: if isStaff();
+      allow read: if signedIn();
+      allow create: if isStaff() || isAccountant();
       allow update, delete: if isAdmin();
     }
 
     match /daily_spreadsheets/{sheetId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read: if signedIn();
+      allow create, update: if isStaff() || isAccountant();
+      allow delete: if isAdmin();
     }
   }
 }
