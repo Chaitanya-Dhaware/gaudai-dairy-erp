@@ -216,6 +216,47 @@ All 36 actions present in the `Code.gs` switch statement are audited against `RO
 
 ## Phase 4 Execution Summary
 
+### Phase 4 Checklist (All 10 Tasks Complete)
+- [x] **Task 1: Centralized API Client Helper (`src/utils/apiClient.js`)**
+  - Sends fresh Firebase ID token via `getIdToken(false)`.
+  - Handles 401 by refreshing token with `getIdToken(true)` once, signing user out if retry fails.
+  - Handles 403 with clear bilingual Marathi & English message.
+  - Shields 5xx internal errors with generic bilingual messages.
+  - Zero direct external calls to Apps Script, Gemini, or Identity Toolkit.
+- [x] **Task 2: Replace Direct Apps Script Calls**
+  - Replaced calls in `src/utils/api.js`, `src/utils/firestoreService.js`, and `src/utils/syncQueue.js` with `callGasProxy`.
+  - Removed spreadsheet IDs (`sheetsIdMaster`, `sheetsIdCollection`, `sheetsIdCustomer`, `sheetsIdExpense`) from request payloads and settings state.
+- [x] **Task 3: Harden Offline Sync Queue (`src/utils/syncQueue.js`)**
+  - Uses fresh token on every retry via `callGasProxy`.
+  - Drops permanent 4xx errors (400, 401, 403) immediately to prevent infinite retry loops; logs to Firestore `sync_failures`.
+  - Retries transient network/5xx/429 errors with exponential backoff up to 5 times.
+  - Idempotency key attached to every mutation to prevent duplicate entries; bounded failed history with quota eviction.
+- [x] **Task 4: Gemini Egress Refactor & Image Compression (`src/utils/gemini.js`)**
+  - Replaced direct `generativelanguage.googleapis.com` calls with `/api/gemini`.
+  - Added browser-side HTML5 canvas image compression (max 1600px, 0.8 JPEG quality, white background fill for transparent PNGs).
+  - Friendly bilingual toast/error message when payload exceeds 4MB.
+- [x] **Task 5: SuperAdmin User Management Migration (`src/utils/superAdminService.js`)**
+  - Replaced Identity Toolkit REST calls with `/api/users`.
+  - Purged `FIREBASE_API_KEY` usage from `superAdminService.js`.
+  - Admin password reset links returned over secure HTTPS, copied to clipboard with prompt fallback.
+- [x] **Task 6: WhatsApp Token & Sheet IDs Lockdown in Settings**
+  - Removed editable `whatsappToken` input from `Settings.jsx` and `SASettings.jsx`.
+  - Sanitized `saveSettings()` in `firestoreService.js` to strip `whatsappToken` and `sheetsId*` before writing.
+  - Replaced editable fields with read-only server-managed status indicators.
+- [x] **Task 7: Purge Leaked Variables, DNS Prefetch, and Update Docs**
+  - Removed `VITE_APPS_SCRIPT_URL` and `VITE_GEMINI_API_KEY` from `.env`.
+  - Removed `<link rel="dns-prefetch" href="https://script.google.com">` from `index.html`.
+  - Updated `.env.example` and `README.md` separating public client variables from server-side secrets.
+  - Documented `vercel dev` requirement for local full-stack development.
+- [x] **Task 8: Automated Tests for API Client, 401/403, and Retry Rules**
+  - Implemented `src/utils/apiClient.test.js` (401 refresh, auto-signout, 403 bilingual message, 500 masking, AST guard for zero `VITE_GEMINI_API_KEY`/`VITE_APPS_SCRIPT_URL` references in `src/`).
+  - Implemented `src/utils/syncQueue.test.js` (permanent 4xx drops, idempotency deduplication, payload sanitization).
+- [x] **Task 9: Automated Build Sentinel Verification Test (`src/utils/bundleLeaks.test.js`)**
+  - Automated test builds with `VITE_GEMINI_API_KEY=SENTINEL_GEMINI_TEST_VALUE` and `VITE_APPS_SCRIPT_URL=SENTINEL_GAS_TEST_VALUE`.
+  - Asserts 0 occurrences of sentinel values, `script.google.com/macros`, and `generativelanguage.googleapis.com` in `dist/`.
+- [x] **Task 10: Sequential Production Deployment Order Documented**
+  - Exact 7-step deployment guide detailed under `HUMAN ACTIONS NEEDED` (Script Properties -> Deploy Code.gs -> Vercel env vars -> Deploy App -> Smoke test -> Archive old deployment -> Deploy Firestore rules).
+
 ### Completed Tasks & Phase 4 Verification
 1. **Unified Client API Gateway (`src/utils/apiClient.js`):**
    - Implemented `apiRequest`, `callGasProxy`, `callGemini`, and `callUsersApi`.
