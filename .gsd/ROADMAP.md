@@ -93,18 +93,18 @@ updated: 2026-11-17T18:24:00+05:30
 **Requirements:** SEC-10 (Fix email regex backdoor), SEC-11 (Prevent role self-mutation), SEC-12 (Protect settings), SEC-13 (Audit log integrity), SEC-14 (Emulator rules tests)
 
 **Plans:**
-- [x] **Task 3.1: Inventory all Firestore operations across `src/` and server Admin SDK in `/api/`**
-- [ ] **Task 3.2: Collection-by-Role Permission Matrix & Decisions for Chaitanya**
-- [ ] **Task 3.3: Rewrite `firestore.rules` from deny-by-default with fail-closed helpers**
-- [ ] **Task 3.4: `users` collection lockdown (read-own, superadmin-read-all, zero client role/active updates)**
-- [ ] **Task 3.5: `settings` and secrets lockdown (deny client writes, no secret leaks)**
-- [ ] **Task 3.6: Business collections validation (bounds, ranges, immutable fields, lifecycle)**
-- [ ] **Task 3.7: `audit_logs` integrity & immutability (actor verification, immutable)**
-- [ ] **Task 3.8: Query & document size limits**
-- [ ] **Task 3.9: Comprehensive matrix unit testing with `@firebase/rules-unit-testing`**
-- [ ] **Task 3.10: Check `firestore.indexes.json` and `firebase.json`**
-- [ ] **Task 3.11: Real app flow verification against emulator**
-- [ ] **Task 3.12: Rollout plan, 1-minute rollback, and manual smoke test guide**
+- [x] **Task 3.1: Inventory.** Search the whole src folder for every Firestore read, write, listener and batch (collection and document paths, fields written, which role screen does it). Write a table in PROGRESS.md: collection, operation, who does it, which fields. Also list what the server (Admin SDK in /api) writes, because the Admin SDK bypasses rules.
+- [x] **Task 3.2: Role matrix.** From the inventory and the proxy role map, propose a collection-by-role matrix (superadmin, admin, staff, accountant) for read, create, update, delete. Apply least privilege. Mark every permission you are unsure about under "DECISIONS FOR CHAITANYA" in PROGRESS.md, with the safer default applied.
+- [ ] **Task 3.3: Rewrite firestore.rules from deny-by-default.** (match /{document=**} denies everything), with helper functions: signedIn, the user's profile read from users/{uid}, active == true, role is exactly one of the four known strings, isSuperAdmin, isAdmin, isStaff, isAccountant. Every helper must fail closed when the profile is missing or malformed.
+- [ ] **Task 3.4: Users collection.** A user may read only their own document. Superadmin may read all. Clients may not create or delete users documents, and may not change role, active or email. Profile updates use an allowlist with request.resource.data.diff(resource.data).affectedKeys().hasOnly([...]). If the inventory shows no client write is needed, deny all client writes and let /api/users do it.
+- [ ] **Task 3.5: Settings and secrets.** No client may write the settings document if it is now handled through the proxy. No client may read any secret-like field. Confirm nothing sensitive is stored in Firestore.
+- [ ] **Task 3.6: Business collections (farmers, collections, customers, sales, expenses and any others found).** Apply the matrix. Validate data on create and update: required fields, correct types, string length limits, numeric ranges (litres, fat, SNF, rates and amounts cannot be negative or absurd), timestamps that cannot be set far in the future, and fields that cannot be changed after creation (ids, createdBy, createdAt). Deleting should be admin and above only, or denied if the app uses soft delete.
+- [ ] **Task 3.7: Audit logs.** Create only when the logged userId equals request.auth.uid, with a fixed set of fields (ensuring actorRole matches the verified profile role from getUserData().role). Never update or delete. Read by admin and above only.
+- [ ] **Task 3.8: Limits.** Block queries and writes that could be abused: no unbounded list for roles that do not need it, document size and array size limits in validation where relevant.
+- [ ] **Task 3.9: Tests with @firebase/rules-unit-testing against the real firestore.rules file:** for every collection and every role, test allowed and denied read, create, update and delete; also signed-out access, inactive user, missing role, wrongly cased role, role escalation, email containing superadmin, forged audit log, and an update that touches a forbidden field. Generate the matrix tests from one table so nothing is forgotten.
+- [ ] **Task 3.10: Check firestore.indexes.json and firebase.json:** rules and indexes paths are correct and the emulator config matches. Make sure every query used in the frontend has its index.
+- [ ] **Task 3.11: Test the real app flows against the emulator** (login, first load, add collection, sale, expense, report load, settings view as each role) using the rules, and list any flow that is now denied. Fix the rules or the frontend (never weaken a rule just to make a test pass).
+- [ ] **Task 3.12: In PROGRESS.md write the rollout plan:** how to deploy rules, how to roll back in one minute, and a manual smoke test for each role.
 
 ---
 
