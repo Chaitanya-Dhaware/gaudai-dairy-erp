@@ -3,7 +3,7 @@ import { describe, it, beforeAll, afterAll, beforeEach } from 'vitest';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import fs from 'fs';
 import path from 'path';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
 
 const PROJECT_ID = 'demo-dairy-erp-test';
 
@@ -73,21 +73,174 @@ describe('Firestore Security Rules Hotfix', () => {
       await assertSucceeds(getDoc(userDocRef));
     });
 
-    it('blocks a non-superadmin user from creating their own user document', async () => {
-      const userDb = testEnv.authenticatedContext('new_user_123', { email: 'new@gaudai.com' }).firestore();
-      const userDocRef = doc(userDb, 'users', 'new_user_123');
+    it('blocks a user from reading another user\'s profile document', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'users', 'staff_user_1'), {
+          uid: 'staff_user_1',
+          name: 'Ramesh Patil',
+          email: 'ramesh@gaudai.com',
+          role: 'staff',
+          active: true
+        });
+        await setDoc(doc(adminDb, 'users', 'secret_admin'), {
+          uid: 'secret_admin',
+          name: 'Admin Boss',
+          email: 'admin@gaudai.com',
+          role: 'admin',
+          active: true
+        });
+      });
 
-      await assertFails(setDoc(userDocRef, {
-        uid: 'new_user_123',
+      const staffDb = testEnv.authenticatedContext('staff_user_1', { email: 'ramesh@gaudai.com' }).firestore();
+      const otherUserRef = doc(staffDb, 'users', 'secret_admin');
+
+      await assertFails(getDoc(otherUserRef));
+    });
+
+    it('blocks an admin from reading other users\' profile documents or listing all users', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'users', 'admin_1'), {
+          uid: 'admin_1',
+          name: 'Branch Admin',
+          email: 'admin1@gaudai.com',
+          role: 'admin',
+          active: true
+        });
+        await setDoc(doc(adminDb, 'users', 'other_user'), {
+          uid: 'other_user',
+          name: 'Other Worker',
+          email: 'other@gaudai.com',
+          role: 'staff',
+          active: true
+        });
+      });
+
+      const adminDb = testEnv.authenticatedContext('admin_1', { email: 'admin1@gaudai.com' }).firestore();
+      
+      // Admin reading another user document -> denied
+      await assertFails(getDoc(doc(adminDb, 'users', 'other_user')));
+
+      // Admin attempting to list the whole users collection -> denied
+      await assertFails(getDocs(collection(adminDb, 'users')));
+    });
+
+    it('allows superadmin to read any user profile document and list all users', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'users', 'superadmin_1'), {
+          uid: 'superadmin_1',
+          name: 'Master Superadmin',
+          email: 'sa@gaudai.com',
+          role: 'superadmin',
+          active: true
+        });
+        await setDoc(doc(adminDb, 'users', 'staff_target'), {
+          uid: 'staff_target',
+          name: 'Staff Target',
+          email: 'staff@gaudai.com',
+          role: 'staff',
+          active: true
+        });
+      });
+
+      const saDb = testEnv.authenticatedContext('superadmin_1', { email: 'sa@gaudai.com' }).firestore();
+
+      // Superadmin reading another user document -> allowed
+      await assertSucceeds(getDoc(doc(saDb, 'users', 'staff_target')));
+
+      // Superadmin querying/listing users collection -> allowed
+      await assertSucceeds(getDocs(collection(saDb, 'users')));
+    });
+
+    it('blocks all client-side user document creation (even by superadmin; must route via /api/users)', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'users', 'superadmin_1'), {
+          uid: 'superadmin_1',
+          name: 'Super Admin',
+          email: 'sa@gaudai.com',
+          role: 'superadmin',
+          active: true
+        });
+      });
+
+      const saDb = testEnv.authenticatedContext('superadmin_1', { email: 'sa@gaudai.com' }).firestore();
+      const userDb = testEnv.authenticatedContext('attacker_1', { email: 'attacker@gaudai.com' }).firestore();
+
+      // Non-superadmin client create -> denied
+      await assertFails(setDoc(doc(userDb, 'users', 'new_user_1'), {
+        uid: 'new_user_1',
         name: 'Attacker',
-        email: 'new@gaudai.com',
         role: 'superadmin',
+        active: true
+      }));
+
+      // Superadmin client create -> denied (must use /api/users Admin SDK)
+      await assertFails(setDoc(doc(saDb, 'users', 'new_user_2'), {
+        uid: 'new_user_2',
+        name: 'New Staff',
+        role: 'staff',
         active: true
       }));
     });
 
+    it('blocks all client-side user document updates (even own profile; must route via /api/users)', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'users', 'staff_1'), {
+          uid: 'staff_1',
+          name: 'Staff Worker',
+          email: 'staff@gaudai.com',
+          role: 'staff',
+          active: true
+        });
+        await setDoc(doc(adminDb, 'users', 'superadmin_1'), {
+          uid: 'superadmin_1',
+          name: 'Super Admin',
+          email: 'sa@gaudai.com',
+          role: 'superadmin',
+          active: true
+        });
+      });
+
+      const staffDb = testEnv.authenticatedContext('staff_1', { email: 'staff@gaudai.com' }).firestore();
+      const saDb = testEnv.authenticatedContext('superadmin_1', { email: 'sa@gaudai.com' }).firestore();
+
+      // User updating own name via client -> denied
+      await assertFails(updateDoc(doc(staffDb, 'users', 'staff_1'), { name: 'Renamed Worker' }));
+
+      // Superadmin updating user via client -> denied (must use /api/users Admin SDK)
+      await assertFails(updateDoc(doc(saDb, 'users', 'staff_1'), { role: 'admin' }));
+    });
+
+    it('blocks all client-side user document deletion (even by superadmin)', async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await setDoc(doc(adminDb, 'users', 'superadmin_1'), {
+          uid: 'superadmin_1',
+          name: 'Super Admin',
+          email: 'sa@gaudai.com',
+          role: 'superadmin',
+          active: true
+        });
+        await setDoc(doc(adminDb, 'users', 'staff_to_delete'), {
+          uid: 'staff_to_delete',
+          name: 'Staff to Delete',
+          email: 'del@gaudai.com',
+          role: 'staff',
+          active: true
+        });
+      });
+
+      const saDb = testEnv.authenticatedContext('superadmin_1', { email: 'sa@gaudai.com' }).firestore();
+
+      // Superadmin attempting client delete -> denied
+      await assertFails(deleteDoc(doc(saDb, 'users', 'staff_to_delete')));
+    });
+
     it('blocks a user from escalating their own role to superadmin or admin', async () => {
-      // Seed a legitimate staff user
       await testEnv.withSecurityRulesDisabled(async (context) => {
         const adminDb = context.firestore();
         await setDoc(doc(adminDb, 'users', 'staff_1'), {
@@ -124,55 +277,6 @@ describe('Firestore Security Rules Hotfix', () => {
 
       await assertFails(updateDoc(userDocRef, { active: true }));
       await assertFails(updateDoc(userDocRef, { email: 'hacked@gaudai.com' }));
-    });
-
-    it('allows a user to update allowed profile fields (e.g., name, phone)', async () => {
-      await testEnv.withSecurityRulesDisabled(async (context) => {
-        const adminDb = context.firestore();
-        await setDoc(doc(adminDb, 'users', 'staff_1'), {
-          uid: 'staff_1',
-          name: 'Staff Worker',
-          email: 'staff@gaudai.com',
-          role: 'staff',
-          active: true,
-          phone: '9876543210'
-        });
-      });
-
-      const staffDb = testEnv.authenticatedContext('staff_1', { email: 'staff@gaudai.com' }).firestore();
-      const userDocRef = doc(staffDb, 'users', 'staff_1');
-
-      await assertSucceeds(updateDoc(userDocRef, { name: 'Updated Staff Worker', phone: '9999999999' }));
-    });
-
-    it('allows superadmin to create users and assign roles', async () => {
-      // Seed legitimate superadmin
-      await testEnv.withSecurityRulesDisabled(async (context) => {
-        const adminDb = context.firestore();
-        await setDoc(doc(adminDb, 'users', 'superadmin_uid'), {
-          uid: 'superadmin_uid',
-          name: 'Super Admin',
-          email: 'sa@gaudai.com',
-          role: 'superadmin',
-          active: true
-        });
-      });
-
-      const saDb = testEnv.authenticatedContext('superadmin_uid', { email: 'sa@gaudai.com' }).firestore();
-
-      // Superadmin creates new user
-      await assertSucceeds(setDoc(doc(saDb, 'users', 'new_staff_uid'), {
-        uid: 'new_staff_uid',
-        name: 'New Staff',
-        email: 'newstaff@gaudai.com',
-        role: 'staff',
-        active: true
-      }));
-
-      // Superadmin changes role of another user
-      await assertSucceeds(updateDoc(doc(saDb, 'users', 'new_staff_uid'), {
-        role: 'admin'
-      }));
     });
   });
 

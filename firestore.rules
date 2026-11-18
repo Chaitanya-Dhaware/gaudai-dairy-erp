@@ -56,20 +56,13 @@ service cloud.firestore {
 
     // ─── USERS COLLECTION ──────────────────────────────────────────
     match /users/{userId} {
-      // Any authenticated user can read their own profile; Super Admin and Admin can read all
-      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      // Any authenticated user can read their own profile; Super Admin can read all
+      allow read: if signedIn() && (request.auth.uid == userId || isSuperAdmin());
       
-      // Super Admin can create users (Task 4 will further refine client write denial)
-      allow create: if isSuperAdmin();
-      
-      // Super Admin can update any user; users can update their own profile but can never change role, active, or email
-      allow update: if isSuperAdmin() || (
-        signedIn() && request.auth.uid == userId &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'active', 'email'])
-      );
-      
-      // Only Super Admin can delete users
-      allow delete: if isSuperAdmin();
+      // All client writes (create, update, delete) are strictly denied.
+      // User management (creation, role assignment, status toggling, deletion) is
+      // handled exclusively server-side via /api/users using the Firebase Admin SDK.
+      allow create, update, delete: if false;
     }
 
     // ─── AUDIT LOGS (Immutable Security Trail) ─────────────────────

@@ -220,7 +220,7 @@ All 36 actions present in the `Code.gs` switch statement are audited against `RO
 - [x] **Task 1: Inventory.** Search the whole src folder for every Firestore read, write, listener and batch (collection and document paths, fields written, which role screen does it). Write a table in PROGRESS.md: collection, operation, who does it, which fields. Also list what the server (Admin SDK in /api) writes, because the Admin SDK bypasses rules.
 - [x] **Task 2: Role matrix.** From the inventory and the proxy role map, propose a collection-by-role matrix (superadmin, admin, staff, accountant) for read, create, update, delete. Apply least privilege. Mark every permission you are unsure about under "DECISIONS FOR CHAITANYA" in PROGRESS.md, with the safer default applied.
 - [x] **Task 3: Rewrite firestore.rules from deny-by-default** (match /{document=**} denies everything), with helper functions: signedIn, the user's profile read from users/{uid}, active == true, role is exactly one of the four known strings, isSuperAdmin, isAdmin, isStaff, isAccountant. Every helper must fail closed when the profile is missing or malformed.
-- [ ] **Task 4: Users collection.** A user may read only their own document. Superadmin may read all. Clients may not create or delete users documents, and may not change role, active or email. Profile updates use an allowlist with request.resource.data.diff(resource.data).affectedKeys().hasOnly([...]). If the inventory shows no client write is needed, deny all client writes and let /api/users do it.
+- [x] **Task 4: Users collection.** A user may read only their own document. Superadmin may read all. Clients may not create or delete users documents, and may not change role, active or email. Profile updates use an allowlist with request.resource.data.diff(resource.data).affectedKeys().hasOnly([...]). If the inventory shows no client write is needed, deny all client writes and let /api/users do it.
 - [ ] **Task 5: Settings and secrets.** No client may write the settings document if it is now handled through the proxy. No client may read any secret-like field. Confirm nothing sensitive is stored in Firestore.
 - [ ] **Task 6: Business collections (farmers, collections, customers, sales, expenses and any others found).** Apply the matrix. Validate data on create and update: required fields, correct types, string length limits, numeric ranges (litres, fat, SNF, rates and amounts cannot be negative or absurd), timestamps that cannot be set far in the future, and fields that cannot be changed after creation (ids, createdBy, createdAt). Deleting should be admin and above only, or denied if the app uses soft delete.
 - [ ] **Task 7: Audit logs.** Create only when the logged userId equals request.auth.uid, with a fixed set of fields (ensuring actorRole matches the verified profile role from getUserData().role). Never update or delete. Read by admin and above only.
@@ -413,11 +413,53 @@ The following 5 decisions have been confirmed and implemented into the security 
 
 ---
 
-#### Notes for Next Iteration (Phase 3, Task 4)
-- **Completed:** Tasks 1, 2, and 3.
-- **Next Task:** **Task 4: `users` collection rules lockdown**:
-  - Restrict `users/{userId}`: user may read only their own document; superadmin may read all.
-  - Deny all client creates, updates, and deletes (since inventory and audit confirmed zero client writes are needed and all user management is handled via `/api/users.js`).
+### Task 4: Users Collection Rules Lockdown
+
+#### 1. Implementation Highlights
+- **Least-Privilege Read Rule:**
+  ```javascript
+  match /users/{userId} {
+    // Any authenticated user can read their own profile; Super Admin can read all
+    allow read: if signedIn() && (request.auth.uid == userId || isSuperAdmin());
+    
+    // All client writes (create, update, delete) are strictly denied.
+    // User management (creation, role assignment, status toggling, deletion) is
+    // handled exclusively server-side via /api/users using the Firebase Admin SDK.
+    allow create, update, delete: if false;
+  }
+  ```
+- **Security Guarantees:**
+  - Non-superadmin users (staff, accountant, admin) can read **only** their own user document (`request.auth.uid == userId`) for session setup and first login. They cannot read any other user's profile document or query/list the `users` collection.
+  - Only `superadmin` can query the whole `users` collection (used in SuperAdmin Workspace `SAUsers.jsx`) or inspect other users' documents.
+  - **Zero Client Mutations:** Every client mutation (`create`, `update`, `delete`) is denied at the database rule layer. Users cannot modify their own profile, role, active status, or email directly from the browser. Superadmins cannot create or edit users directly via client SDK; all account creation, status toggling, and role updates route authoritatively through `/api/users.js` via the Firebase Admin SDK, ensuring server-side validations, last-superadmin protection, and audit logging.
+
+#### 2. Test Verification
+- Added comprehensive unit tests in `src/firestoreRules.test.js`:
+  - `allows a user to read their own profile document (First Login flow)` -> **Passed**
+  - `blocks a user from reading another user's profile document` -> **Passed**
+  - `blocks an admin from reading other users' profile documents or listing all users` -> **Passed**
+  - `allows superadmin to read any user profile document and list all users` -> **Passed**
+  - `blocks all client-side user document creation (even by superadmin; must route via /api/users)` -> **Passed**
+  - `blocks all client-side user document updates (even own profile; must route via /api/users)` -> **Passed**
+  - `blocks all client-side user document deletion (even by superadmin)` -> **Passed**
+  - `blocks a user from escalating their own role to superadmin or admin` -> **Passed**
+  - `blocks a user from changing their own active flag or email` -> **Passed**
+- Full emulator rules test suite passing: **21/21 tests passed** (`npm run test:rules`).
+- Full Vitest suite passing: **69 passed, 21 skipped** (when emulator offline).
+- Production build passing: `npm run build` (0 errors).
+- ESLint passing on changed test files with 0 warnings/errors.
+
+---
+
+#### Notes for Next Iteration (Phase 3, Task 5)
+- **Completed:** Tasks 1, 2, 3, and 4.
+- **Next Task:** **Task 5: Settings and secrets protection**:
+  - In `firestore.rules`:
+    - `settings/{settingId}`: Allow read to all active signed-in roles (`isActive()`).
+    - Allow write (create, update) strictly to `isAdmin()` and `isSuperAdmin()` (staff and accountant denied).
+    - Prevent any secret-like fields (`whatsappToken`, `sheetsId*`, `appsScriptSecret`, etc.) from being written or read in Firestore. Confirm nothing sensitive is stored in Firestore.
+    - Deny `delete` on `settings` for all roles (`allow delete: if false;`).
+  - Add unit tests in `src/firestoreRules.test.js` validating settings read/write permissions and secret protection.
 
 ---
 
