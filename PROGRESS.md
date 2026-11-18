@@ -13,7 +13,7 @@
 | **Phase 2** | Secure Serverless Backend Proxy (`/api/*`) & Defense-in-Depth in `Code.gs` | ✅ Complete |
 | **Phase 3** | Database & Access Control Hardening (`firestore.rules` + Emulator Tests) | ⬜ Not Started |
 | **Phase 4** | Frontend Egress Refactor (Eliminate Direct Calls to Gemini, Apps Script & Identity Toolkit) | ✅ Complete |
-| **Phase 5** | Secure File Import (Replace `xlsx` with `papaparse` & `exceljs`, Lazy Loading, Limits, Audit) | ⬜ Not Started |
+| **Phase 5** | Secure File Import (Replace `xlsx` with `papaparse` & `exceljs`, Lazy Loading, Limits, Audit) | 🔄 In Progress |
 | **Phase 6** | Production Polish, UI/UX, Meta, Security Headers & Regression Verification | ⬜ Not Started |
 
 ---
@@ -290,6 +290,73 @@ All 36 actions present in the `Code.gs` switch statement are audited against `RO
    - Added `src/utils/bundleLeaks.test.js` (4 tests verifying zero bundle leaks).
    - Full Vitest suite passing (10 files, 69 tests passed, 13 rules tests skipped when emulator offline).
    - Firestore Emulator rules suite passing (13/13 tests passed).
+
+---
+
+## Phase 5 Execution Summary
+
+### Phase 5 Checklist
+- [x] **Task 1: Inventory all uses of `xlsx` package across imports, exports, templates, backup/restore, and reports.**
+  - Complete code audit performed; zero files removed in this task.
+- [ ] **Task 2: Create unified `src/utils/fileImport.js` module.**
+  - CSV via `papaparse`; `.xlsx` via dynamically-imported `exceljs` (keeping main chunk lightweight).
+  - Explicit rejection of legacy `.xls` and `.ods` with bilingual Marathi & English guidance.
+- [ ] **Task 3: Pre-parsing safety limits & binary magic number verification.**
+  - Max 5MB file size, max 5,000 rows, max 50 columns, max 1 sheet read.
+  - Check `.xlsx` content type / zip header (`PK\x03\x04`). Never evaluate formulas (read cached result values only, or reject formula cells); ignore macros, external links, and embedded OLE objects.
+- [ ] **Task 4: Strict row validation & injection sanitization.**
+  - Trim text, parse Marathi/Devanagari text & numerals, handle UTF-8 with/without BOM.
+  - Bilingual header dictionary mapping (English & Marathi).
+  - Range validation (litres > 0, fat/SNF boundaries, valid dates/Excel serials).
+  - In-file deduplication; prototype pollution protection (`__proto__`, `constructor` blocked).
+- [ ] **Task 5: Two-stage preview & dry-run flow.**
+  - Show valid rows, error counts, row/column locations. No persistence until explicit user confirmation.
+- [ ] **Task 6: Chunked proxy transmission via `apiClient`.**
+  - Chunks fit under 512KB proxy limit; idempotency key per chunk; progress reporting and partial failure reporting.
+- [ ] **Task 7: Secure export refactor (CSV & XLSX).**
+  - Prepend UTF-8 BOM (`\uFEFF`) to CSV exports for Excel compatibility.
+  - Prefix formula-injection characters (`=`, `+`, `-`, `@`) with `'`.
+- [ ] **Task 8: Package removal & dependency vulnerability audit.**
+  - Remove `xlsx` from `package.json` & lockfile.
+  - Run `npm audit --omit=dev` and document results.
+- [ ] **Task 9: Comprehensive automated test suite.**
+  - Tests for valid CSV, Marathi BOM, size limits, row limits, extension spoofing, duplicates, negative values, formula injection, and bundle chunk isolation.
+- [ ] **Task 10: Mobile responsiveness & UI performance verification.**
+  - Verify 360px viewport responsiveness and ensure 5,000-row processing does not block main thread.
+
+---
+
+### Inventory of `xlsx` Package Usages (Task 1 Audit)
+
+The codebase was comprehensively audited for all direct and indirect dependencies on the `xlsx` (`SheetJS`) package. In accordance with Task 1 directives, **no code or dependencies have been removed yet**.
+
+| File | Type | Line(s) | Description & Functionality | Security / Architectural Risk |
+|---|---|---|---|---|
+| [`src/utils/gaudaiAI.js`](src/utils/gaudaiAI.js) | **Import** | L14 | `import * as XLSX from 'xlsx';` | Top-level static import causes the entire vulnerable `xlsx` package (~800KB) to be included in the main app production bundle (`index-*.js`). |
+| [`src/utils/gaudaiAI.js`](src/utils/gaudaiAI.js) | **Import / Parsing** | L350–373 | `export async function parseExcelData(file)` | Reads user-uploaded file array buffers using `XLSX.read(data, { type: 'array' })`. Iterates all `workbook.SheetNames` and converts each worksheet to an array of objects via `XLSX.utils.sheet_to_json(worksheet, { defval: '' })`. Called by `processExcelFile()` (L458–480). | Vulnerable to Prototype Pollution (CVE-2023-30533) and ReDoS; no file size, row, column, or sheet limits; no binary zip validation (`PK`); indiscriminately accepts `.xls` and `.ods`. |
+| [`src/utils/gaudaiAI.js`](src/utils/gaudaiAI.js) | **Export (Excel)** | L380–385 | `export function exportToExcel(rows, filename)` | Converts JSON rows into a worksheet via `XLSX.utils.json_to_sheet(rows)`, creates a workbook via `XLSX.utils.book_new()`, appends sheet `XLSX.utils.book_append_sheet(wb, ws, 'Report')`, and triggers download with `XLSX.writeFile(wb, `${filename}.xlsx`)`. | No formula injection protection: values starting with `=`, `+`, `-`, `@` are exported as live spreadsheet formulas. |
+| [`src/utils/gaudaiAI.js`](src/utils/gaudaiAI.js) | **Export (CSV)** | L392–402 | `export function exportToCSV(rows, filename)` | Converts JSON rows to worksheet via `XLSX.utils.json_to_sheet(rows)`, serializes via `XLSX.utils.sheet_to_csv(ws)`, and downloads as a text/csv Blob. | Lacks UTF-8 BOM (`\uFEFF`), which causes Marathi/Devanagari text to render corrupted (mojibake) in Excel; lacks formula injection escaping. |
+| [`src/store/chatStore.js`](src/store/chatStore.js) | **Import / Pipeline** | L7, L170, L204 | Imports `processExcelFile`, `exportToExcel`, `exportToCSV`. In `handleFileUpload()`, detects `['xlsx', 'xls', 'csv', 'ods']` and dispatches to `processExcelFile(file, snapshot, task)`. | Tightly couples chat pipeline to `gaudaiAI.js` spreadsheet methods. |
+| [`src/store/chatStore.js`](src/store/chatStore.js) | **Export (Reports)** | L265–295 | `downloadReport: (format = 'xlsx') => { ... }` | Dispatches to `exportToCSV(rows, filename)` or `exportToExcel(rows, filename)` based on format argument. | Inherits `gaudaiAI.js` export vulnerabilities. |
+| [`src/components/chat/ReportCard.jsx`](src/components/chat/ReportCard.jsx) | **UI / Report Actions** | L34, L43, L46 | UI action buttons triggering `downloadReport('xlsx')` and `downloadReport('csv')`. | UI consumer of report exports. |
+| [`src/components/chat/SpreadsheetPreviewCard.jsx`](src/components/chat/SpreadsheetPreviewCard.jsx) | **UI / Cleaned Export** | L4, L194 | Imports `exportToExcel` from `gaudaiAI.js`. Invokes `exportToExcel(rowsToExport, ...)` to download user-edited/cleaned spreadsheet data. | UI consumer of `exportToExcel`. |
+| [`src/components/chat/ChatInput.jsx`](src/components/chat/ChatInput.jsx) | **UI / File Input** | L17, L25, L44, L272, L325, L334, L383 | Defines `ACCEPTED_EXTENSIONS` (`['xlsx', 'xls', 'csv', 'ods']`), file input `accept` strings, drag-and-drop validation, and helper labels mentioning Excel formats. | Needs updating in subsequent tasks to drop `.xls` and `.ods` and guide users to `.xlsx` or `.csv`. |
+| [`src/utils/spreadsheetPdf.test.js`](src/utils/spreadsheetPdf.test.js) | **Unit Tests** | L2, L48–68 | Unit test importing `* as XLSX from 'xlsx'`. Uses `XLSX.utils.book_new()`, `XLSX.utils.json_to_sheet()`, and `XLSX.utils.sheet_to_json()` to verify spreadsheet parsing and export behavior. | Unit test will need refactoring when `xlsx` is uninstalled in Task 8. |
+| [`src/components/superadmin/SAComponents.jsx`](src/components/superadmin/SAComponents.jsx) | **Independent CSV Export** | L298–317 | `export function exportToCSV(data, filename)` | Custom string-based CSV serializer used across 8 SuperAdmin views (`SAAuditLog`, `SACollections`, `SACustomers`, `SADatabase`, `SAExpenses`, `SAFarmers`, `SASales`, `SAUsers`). | Does not use `xlsx` directly, but shares identical CSV export vulnerabilities: lacks UTF-8 BOM (`\uFEFF`) and lacks formula injection protection (`=, +, -, @`). Must be unified with secure export utility in Task 7. |
+| [`package.json`](package.json) | **Package Dependency** | L28 | `"xlsx": "^0.18.5"` | Direct project dependency; triggers critical `npm audit` warnings. |
+| [`package-lock.json`](package-lock.json) | **Lockfile Dependency** | L24, L13745–13760 | Resolved dependency on `xlsx@0.18.5`. | Must be cleanly removed in Task 8 alongside installation of `papaparse` and `exceljs`. |
+
+---
+
+### Notes for Next Iteration (Phase 5, Task 2)
+- **Next Task:** Task 2 — Create the unified parser module `src/utils/fileImport.js`.
+- **Implementation Strategy:**
+  - Parse CSV using `papaparse` (lightweight, robust streaming support).
+  - Parse `.xlsx` using `exceljs`, loaded strictly via dynamic `import('exceljs')` so that the heavy Excel parsing engine is not bundled into the initial application payload.
+  - Detect and reject legacy `.xls` (Compound File Binary Format / OLE) and `.ods` (OpenDocument Spreadsheet) files, presenting a clear bilingual alert:
+    - *Marathi:* `"कृपया फाईल CSV किंवा .xlsx फॉरमॅटमध्ये सेव्ह करून पुन्हा अपलोड करा."`
+    - *English:* `"Please save your file as CSV or .xlsx format and upload again."`
+  - Maintain all existing UI and components intact without breaking changes until Task 7/8.
 
 ---
 

@@ -134,26 +134,21 @@ updated: 2026-11-17T18:24:00+05:30
 ---
 
 ### Phase 5: Secure File Import (`xlsx` Replacement)
-**Status:** ⬜ Not Started  
+**Status:** 🔄 In Progress  
 **Objective:** Replace vulnerable `xlsx 0.18.5` with `papaparse` and `exceljs`. Enforce strict validation, row/size limits, lazy-loading, and formula rejection.  
 **Requirements:** SEC-20 (Remove xlsx, install papaparse & exceljs), SEC-21 (Lazy-load parser), SEC-22 (Bilingual drop warnings for .xls/.ods), SEC-23 (File safety constraints & audit)
 
 **Plans:**
-- [ ] **Plan 5.1: Package Migration**
-  - Uninstall `xlsx`.
-  - Install `papaparse` and `exceljs`.
-  - Run `npm audit` to verify resolution of SheetJS vulnerabilities.
-- [ ] **Plan 5.2: Rewrite `bulkImportService.js` with Security Guards**
-  - Implement dynamic lazy-loading for `papaparse` (CSV) and `exceljs` (XLSX).
-  - Explicitly reject `.xls` and `.ods` with clear bilingual Marathi and English warning modal/toast:
-    - *Marathi:* "कृपया फाईल CSV किंवा .xlsx फॉरमॅटमध्ये सेव्ह करून पुन्हा अपलोड करा."
-    - *English:* "Please save your file as CSV or .xlsx format and upload again."
-  - Enforce maximum file size (5MB) and row count limit (2,500 rows).
-  - Disable formula evaluation (`cell.value` extracted as plain text/numeric, ignoring formulas).
-  - Validate all columns against strict dairy schema.
-- [ ] **Plan 5.3: Update Tests & Dependency Audit**
-  - Update `src/utils/bulkImport.test.js` to test CSV and XLSX parsing with the new libraries.
-  - Run `npm audit` and document remaining dependency status in `PROGRESS.md`.
+- [x] **Task 5.1: Inventory all uses of `xlsx` across imports, exports, templates, backup/restore, and reports**
+- [ ] **Task 5.2: Create unified `fileImport.js` with `papaparse` and lazy-loaded `exceljs`**
+- [ ] **Task 5.3: Add pre-parsing safety limits (size, rows, cols, zip validation)**
+- [ ] **Task 5.4: Strict row validation, Marathi text/numerals, and prototype pollution protection**
+- [ ] **Task 5.5: Two-stage preview & dry run confirmation**
+- [ ] **Task 5.6: Chunked proxy transmission via `apiClient`**
+- [ ] **Task 5.7: Secure CSV/XLSX export refactor (UTF-8 BOM & formula injection prefixing)**
+- [ ] **Task 5.8: Remove `xlsx` package and verify `npm audit`**
+- [ ] **Task 5.9: Automated tests for file import, validation, security, and bundle chunk isolation**
+- [ ] **Task 5.10: Mobile responsiveness (360px) and UI performance verification**
 
 ---
 
