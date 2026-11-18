@@ -11,7 +11,7 @@
 |:---:|---|:---:|
 | **Phase 1** | Authentication & Client Lockdown (Remove Demo Bypass, Add Tests, Auth Emulator Docs) | ✅ Complete |
 | **Phase 2** | Secure Serverless Backend Proxy (`/api/*`) & Defense-in-Depth in `Code.gs` | ✅ Complete |
-| **Phase 3** | Database & Access Control Hardening (`firestore.rules` + Emulator Tests) | ⬜ Not Started |
+| **Phase 3** | Database & Access Control Hardening (`firestore.rules` + Emulator Tests) | 🔄 In Progress |
 | **Phase 4** | Frontend Egress Refactor (Eliminate Direct Calls to Gemini, Apps Script & Identity Toolkit) | ✅ Complete |
 | **Phase 5** | Secure File Import (Replace `xlsx` with `papaparse` & `exceljs`, Lazy Loading, Limits, Audit) | 🔄 In Progress |
 | **Phase 6** | Production Polish, UI/UX, Meta, Security Headers & Regression Verification | 🔄 In Progress |
@@ -211,6 +211,117 @@ All 36 actions present in the `Code.gs` switch statement are audited against `RO
 ### 6. CORS and Error Sanitization Confirmation
 - Confirmed zero occurrences of `Access-Control-Allow-Origin: *`. All API routes are hosted under the same origin as the frontend SPA.
 - All endpoints (`gas-proxy`, `gemini`, `users`, `auth`) return generic, client-safe error messages with zero internal exception stack traces.
+
+---
+
+## Phase 3 Execution Summary: Database & Access Control Hardening
+
+### Phase 3 Checklist (12 Ordered Tasks)
+- [x] **Task 1: Inventory all Firestore operations across `src/` and server Admin SDK in `/api/`**
+  - Audited all reads, writes, listeners, and batch operations across `src/` and `/api/`.
+  - Documented client and server operations tables, field definitions, caller roles, and listener findings.
+- [ ] **Task 2: Collection-by-Role Permission Matrix & Decisions for Chaitanya**
+  - Propose matrix (Superadmin, Admin, Staff, Accountant) for read, create, update, delete across all collections.
+  - Apply least privilege and document any ambiguous permissions under `DECISIONS FOR CHAITANYA` with safer defaults.
+- [ ] **Task 3: Rewrite `firestore.rules` (Deny-by-default with fail-closed helpers)**
+  - Base deny-by-default (`match /{document=**} { allow read, write: if false; }`).
+  - Implement fail-closed helpers: `signedIn()`, `getUserData()`, `isActive()`, role validation against 4 known roles, `isSuperAdmin()`, `isAdmin()`, `isStaff()`, `isAccountant()`.
+- [ ] **Task 4: `users` Collection Rules Lockdown**
+  - User can read only their own doc (`users/{uid}`). Superadmin can read all.
+  - Zero client creates or deletes; zero client updates to `role`, `active`, or `email`.
+  - Profile updates allowlist via `diff().affectedKeys().hasOnly([...])`, or deny client write entirely if handled by `/api/users`.
+- [ ] **Task 5: Settings & Secrets Protection**
+  - Deny client writes to `settings/general` (handled via proxy / Admin SDK).
+  - Deny reading secret-like fields; confirm zero secrets stored in Firestore.
+- [ ] **Task 6: Business Collections Validation & Lifecycle Rules**
+  - Apply matrix across `farmers`, `collections`, `customers`, `products`, `sales`, `expenses`, `trash`, `daily_spreadsheets`.
+  - Validate required fields, types, string length, positive/sane numeric ranges (litres, fat, snf, rates, amounts), past/present timestamps, immutable IDs/creation metadata.
+  - Deletes restricted to Admin/Superadmin (or soft delete).
+- [ ] **Task 7: `audit_logs` Integrity & Immutability**
+  - Create allowed only when `userId` and `actor` match `request.auth.uid` with fixed schema.
+  - Updates and deletes strictly forbidden (`false`).
+  - Read access restricted to Admin and Superadmin.
+- [ ] **Task 8: Security Limits & Query Safeguards**
+  - Enforce document size and payload limits in validation.
+  - Guard against unbounded queries for unprivileged roles.
+- [ ] **Task 9: Comprehensive Matrix Rules Unit Tests (`@firebase/rules-unit-testing`)**
+  - Automated tests covering allowed/denied read, create, update, delete for every role and every collection.
+  - Test edge cases: signed-out, inactive user, missing profile, malformed role, role escalation, email containing superadmin, forged audit log, forbidden field mutation.
+- [ ] **Task 10: Verify `firestore.indexes.json` and `firebase.json`**
+  - Verify rules and indexes file paths and emulator ports.
+  - Ensure every query used in the frontend has its composite index defined.
+- [ ] **Task 11: End-to-End Real App Flow Verification against Emulator**
+  - Verify login, first load, add collection, sale, expense, report load, settings view for each role against emulator.
+  - Fix any unintended denials without weakening security.
+- [ ] **Task 12: Production Rollout, 1-Minute Rollback Plan & Manual Smoke Tests**
+  - Document exact deployment instructions, 1-minute rollback procedure, and per-role smoke test matrix.
+
+---
+
+### Task 1: Complete Firestore Operations Inventory
+
+#### 1. Client-Side Operations Across `src/`
+
+| Collection / Path | Operation | Who Does It (Role / Service / View) | Fields Written / Accessed | Rules & Access Control Notes |
+|---|---|---|---|---|
+| `users/{uid}` | **Read (Single Doc)** | Any authenticated user on login / session restoration (`src/store/appStore.js` `onAuthStateChanged`) | `uid`, `email`, `name`, `role`, `active`, `created_at`, `created_by` | Must be allowed for `request.auth.uid == uid`. Client must only read their own profile. |
+| `users` | **Read (Collection / Query)** | `superadmin` only (`src/utils/superAdminService.js` `loadAllUsers` in `SAUsers.jsx`) | All user document fields | Client collection read must be restricted strictly to `isSuperAdmin()`. |
+| `users/{uid}` | **Create** | *None in client* (Handled server-side by `/api/users.js` via Admin SDK) | N/A | Client create must be denied (`allow create: if false;`). |
+| `users/{uid}` | **Update** | *None in client* (User mutations, activation/deactivation handled by `/api/users.js`) | N/A | Client update must be strictly denied or limited to non-sensitive profile fields (`name`). Client must **never** mutate `role`, `active`, or `email`. |
+| `users/{uid}` | **Delete** | *None in client* | N/A | Client delete must be denied (`allow delete: if false;`). |
+| `settings/general` | **Read (Single Doc)** | All authenticated roles (`staff`, `accountant`, `admin`, `superadmin`) via `firestoreService.loadSettings` | Business settings: `baseRate`, `businessName`, `morningShiftStart`, `eveningShiftStart`, `currencySymbol`, `language`, `systemAlert` | Read allowed for all active authenticated users. |
+| `settings/general` | **Write / Update** | `admin` & `superadmin` (`firestoreService.saveSettings`, `superAdminService.saveSettingsWithAudit`) | Business settings (`whatsappToken` and `sheetsId*` stripped by client) | Client write restricted strictly to `isAdmin()` and `isSuperAdmin()`. Staff and accountant must be denied. |
+| `farmers` | **Read (Collection)** | All authenticated roles (`firestoreService.loadFarmers`) | `farmer_id`, `name`, `mobile`, `address`, `milk_type`, `current_due`, `status`, `created_at` | Read allowed for all active authenticated roles. |
+| `farmers/{farmerId}` | **Create** | `staff`, `admin`, `superadmin` (`firestoreService.registerFarmer`) | `farmer_id`, `name`, `mobile`, `address`, `milk_type`, `current_due: 0`, `status: 'Active'`, `created_at` | Validate required fields, 10-digit phone, milk_type enum. Accountant denied create. |
+| `farmers/{farmerId}` | **Update** | `staff`, `admin`, `superadmin` (`firestoreService.addMilkCollection` updates dues; `superAdminService.updateFarmer`) | `current_due`, `total_liters`, `total_earnings`, `last_delivery`, `name`, `mobile`, `address`, `updated_at`, `updated_by` | Staff can update dues/totals via collection entries; Admin/Superadmin can update profile details. Accountant denied update. |
+| `farmers/{farmerId}` | **Delete (Soft/Hard)** | `admin` & `superadmin` (`superAdminService.softDeleteFarmer`, `firestoreService.deleteFarmer`) | Moves doc to `trash/farmers_{id}` and deletes original | Deny staff and accountant. Admin / Superadmin only. |
+| `collections` | **Read (Collection / Query)** | All authenticated roles (`firestoreService.loadCollections`) | `entry_id`, `farmer_id`, `farmer_name`, `date`, `shift`, `milk_type`, `quantity`, `fat`, `snf`, `calculated_rate`, `total_amount`, `paid_amount`, `due_amount`, `status`, `notes`, `timestamp` | Read allowed for all active authenticated roles. |
+| `collections/{entryId}` | **Create (Single & Batch)** | `staff`, `admin`, `superadmin` (`firestoreService.addMilkCollection` batch) | All entry fields above | Staff/Admin/Superadmin create. Numeric range validation (quantity > 0, fat 2.0–12.0, snf 6.0–12.0, rate > 0). Accountant denied. |
+| `collections/{entryId}` | **Update** | `staff`, `admin`, `superadmin` (`firestoreService.markFarmerPaid`), Admin/Superadmin (`superAdminService.updateCollection`) | `paid_amount`, `due_amount`, `status`, `payment_method`, `payment_notes`, `paid_at` | Allowed for staff/admin/superadmin when recording payments. Accountant denied. |
+| `collections/{entryId}` | **Delete** | `admin` & `superadmin` (`superAdminService.softDeleteCollection`), `superadmin` (`appStore.clearAllTransactions`) | Moves to `trash` or deletes | Deny staff and accountant. Superadmin only for transaction clearing. |
+| `customers` | **Read (Collection)** | All authenticated roles (`firestoreService.loadCustomers`) | `customer_id`, `shop_name`, `owner_name`, `mobile`, `address`, `current_due`, `status`, `created_at` | Read allowed for all active authenticated roles. |
+| `customers/{customerId}` | **Create** | `staff`, `accountant`, `admin`, `superadmin` (`firestoreService.addCustomer`, `bulkImportService`) | All customer fields above | Validate non-empty shop/owner name, 10-digit phone, non-negative due. |
+| `customers/{customerId}` | **Update** | `staff`, `accountant`, `admin`, `superadmin` (sales dues, payments, profile edits) | `current_due`, `shop_name`, `owner_name`, `mobile`, `address`, `updated_at`, `updated_by` | Allowed for updating customer dues on sale/payment and editing profile. |
+| `customers/{customerId}` | **Delete** | `admin` & `superadmin` (`superAdminService.softDeleteCustomer`, `firestoreService.deleteCustomer`) | Moves to `trash` or deletes | Deny staff and accountant. Admin / Superadmin only. |
+| `products` | **Read (Collection)** | All authenticated roles (`firestoreService.loadProducts`) | `product_id`, `product_name`, `category`, `unit_price`, `status`, `created_at` | Read allowed for all active authenticated roles. |
+| `products/{productId}` | **Create / Update** | `admin` & `superadmin` (`firestoreService.addProduct`, `firestoreService.updateProduct`) | Product fields above | Staff and accountant are **blocked** from product catalog mutation. Admin & Superadmin only. |
+| `products/{productId}` | **Delete** | `admin` & `superadmin` (`firestoreService.deleteProduct`) | Deletes document | Admin & Superadmin only. |
+| `sales` | **Read (Collection / Query)** | All authenticated roles (`firestoreService.loadSales`) | `bill_id`, `customer_id`, `customer_name`, `date`, `items`, `total_amount`, `paid_amount`, `due_amount`, `status`, `payment_method`, `notes`, `timestamp` | Read allowed for all active authenticated roles. |
+| `sales/{billId}` | **Create** | `staff`, `accountant`, `admin`, `superadmin` (`firestoreService.addSale`, `firestoreService.recordCustomerPayment`) | Invoice and payment receipt records | Validate total_amount >= 0, items array, valid customer_id. |
+| `sales/{billId}` | **Update** | `staff`, `accountant`, `admin`, `superadmin` (FIFO payment allocation), Admin/Superadmin (`superAdminService.updateSale`) | `paid_amount`, `due_amount`, `status` | Updates on payment receipt. |
+| `sales/{billId}` | **Delete** | `admin` & `superadmin` (`superAdminService.softDeleteSale`), `superadmin` (`appStore.clearAllTransactions`) | Moves to `trash` or deletes | Deny staff and accountant. Admin / Superadmin only. |
+| `expenses` | **Read (Collection / Query)** | All authenticated roles (`firestoreService.loadExpenses`) | `expense_id`, `date`, `reason`, `amount`, `category`, `payment_method`, `notes`, `receipt_url`, `timestamp` | Read allowed for all active authenticated roles. |
+| `expenses/{expId}` | **Create** | `staff`, `accountant`, `admin`, `superadmin` (`firestoreService.addExpense`) | All expense fields above | Validate amount > 0, date string, valid category. |
+| `expenses/{expId}` | **Update** | `admin` & `superadmin` (`superAdminService.updateExpense`) | `reason`, `amount`, `category`, `payment_method`, `notes`, `updated_at`, `updated_by` | Staff / accountant read and create only; Admin/Superadmin can edit. |
+| `expenses/{expId}` | **Delete** | `admin` & `superadmin` (`superAdminService.softDeleteExpense`, `firestoreService.deleteExpense`) | Moves to `trash` or deletes | Deny staff and accountant. Admin / Superadmin only. |
+| `daily_spreadsheets/{date}` | **Read** | All authenticated roles (`firestoreService.loadDailySpreadsheets`, `getDailySpreadsheetByDate`) | `date`, `spreadsheetId`, `spreadsheetUrl`, `createdAt`, `dayOfWeek` | Read allowed for all active authenticated roles. |
+| `daily_spreadsheets/{date}` | **Write (Merge)** | `staff`, `accountant`, `admin`, `superadmin` (via `syncQueue.saveDailySpreadsheetMapping`) | Daily spreadsheet metadata | Allow write/merge of daily metadata when GAS proxy provisions daily sheets. |
+| `audit_logs/{logId}` | **Create** | Authenticated user (`userId == request.auth.uid`) via `superAdminService.logAction` | `log_id`, `userId`, `actor`, `actorRole`, `action`, `module`, `recordId`, `before`, `after`, `reason`, `timestamp` | `userId` and `actor` must match `request.auth.uid`. Strictly immutable: **never** update or delete. |
+| `audit_logs` | **Read (Query)** | `admin` & `superadmin` only (`superAdminService.loadAuditLogs` in `SAAuditLog.jsx`) | Audit trail records | Deny staff and accountant. Read allowed only for `admin` and `superadmin`. |
+| `trash/{trashId}` | **Read / Write / Delete** | `admin` & `superadmin` (`superAdminService` soft delete, restore, purge) | Deleted record backup + `_collection`, `_deleted_at`, `_deleted_by`, `_reason` | Deny staff and accountant. Admin and Superadmin only. |
+| `sync_failures/{failureId}` | **Create** | Client sync processor (`syncQueue.js`) on permanent 4xx failure | `id`, `action`, `payload`, `idempotencyKey`, `failedReason`, `failedAt`, `attempts` | Allow authenticated active user write when sync job fails permanently. |
+| `sync_failures` | **Read / Delete** | `superadmin` only (`superAdminService.loadSyncFailures`, `clearSyncFailure` in `SASync.jsx`) | Sync failure diagnostics | Superadmin only. |
+
+#### 2. Server-Side Operations via Firebase Admin SDK (`api/`)
+
+> [!NOTE]
+> The Firebase Admin SDK operates in privileged serverless functions (`/api/users.js` and `/api/_lib/auth.js`) and **completely bypasses Firestore security rules**. All server mutations are validated in the API code before execution.
+
+| Collection / Path | Server Operation | API Endpoint / Module | Fields Written / Accessed | Security & Validation Controls in Proxy |
+|---|---|---|---|---|
+| `users/{uid}` | **Read (Get)** | `api/_lib/auth.js` (`authenticateRequest`) | `uid`, `email`, `name`, `role`, `active` | Authenticates caller on every serverless invocation; checks `active === true` and verifies caller role. |
+| `users/{uid}` | **Create (Set)** | `api/users.js` (`action: 'create'`) | `uid`, `email`, `name`, `role`, `active: true`, `created_at`, `created_by` | Superadmin-only endpoint; validates email, password length, role against allowlist; generates reset link. |
+| `users/{uid}` | **Update (Update)** | `api/users.js` (`action: 'update'`) | `name`, `role`, `active`, `updated_at`, `updated_by` | Superadmin-only; guards against demoting or deactivating the last remaining superadmin (`400`). |
+| `users` | **Read (List Query)** | `api/users.js` (`action: 'list'`) | All user document fields | Superadmin-only endpoint; returns sanitized user list. |
+| `audit_logs/{logId}` | **Create (Set)** | `api/users.js` (`action: 'create'` / `'update'`) | `log_id`, `userId`, `actor`, `actorRole: 'superadmin'`, `action: 'CREATE_USER' | 'UPDATE_USER'`, `module: 'users'`, `recordId: uid`, `after`, `timestamp` | Immutable server-side audit logging of all administrative user mutations. |
+
+#### 3. Realtime Listeners Audit
+- **Grep Pattern:** `git grep -nE "onSnapshot" src/`
+- **Audit Result:** **0 occurrences found.** No realtime Firestore listeners (`onSnapshot`) are used anywhere in `src/`. All data loading and syncing uses one-shot promises (`getDoc`, `getDocs`, `setDoc`, `updateDoc`, `deleteDoc`, `writeBatch`).
+
+#### 4. Notes for Next Iteration (Phase 3, Task 2)
+- **Completed:** Task 1 (Comprehensive inventory of all client and server Firestore operations across `src/` and `api/`).
+- **Next Task:** Task 2 (Propose collection-by-role matrix for `superadmin`, `admin`, `staff`, `accountant` applying least privilege, and document any permission decisions under `DECISIONS FOR CHAITANYA` in `PROGRESS.md` with safer defaults).
 
 ---
 

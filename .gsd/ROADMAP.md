@@ -88,26 +88,23 @@ updated: 2026-11-17T18:24:00+05:30
 ---
 
 ### Phase 3: Database & Access Control Hardening (`firestore.rules` + Emulator Tests)
-**Status:** ⬜ Not Started  
-**Objective:** Lock down Cloud Firestore security rules to eliminate privilege escalation, prevent self-promotion to superadmin, protect settings secrets, and enforce audit log integrity. Verify rules with emulator tests. Rules are deployed only after Phase 4 completes.  
+**Status:** 🔄 In Progress  
+**Objective:** Lock down Cloud Firestore security rules with a deny-by-default architecture, fail-closed helpers, per-collection role authorization, data validation, audit log integrity, query/size limits, and comprehensive emulator test coverage.  
 **Requirements:** SEC-10 (Fix email regex backdoor), SEC-11 (Prevent role self-mutation), SEC-12 (Protect settings), SEC-13 (Audit log integrity), SEC-14 (Emulator rules tests)
 
 **Plans:**
-- [ ] **Plan 3.1: Eliminate Email Pattern Backdoors & Lock Role Updates**
-  - In `firestore.rules`:
-    - Remove `request.auth.token.email.matches('.*superadmin.*')`. Rely strictly on `getUserData().role == 'superadmin'` or custom claims.
-    - Modify `users/{userId}` update rule: users can update basic profile info (e.g. name, language), but `request.resource.data.role == resource.data.role` (users cannot change their own role or active status). Only superadmin can mutate roles.
-- [ ] **Plan 3.2: Protect Settings & Sensitive Documents**
-  - Restrict `match /settings/{settingId}` read and write to `isAdmin()` or `isSuperAdmin()`. Ensure client cannot read secrets directly.
-- [ ] **Plan 3.3: Validate Audit Logs Structure**
-  - Harden `match /audit_logs/{logId}`: enforce that `request.resource.data.actor == request.auth.uid` and validate that required audit fields are populated.
-- [ ] **Plan 3.4: Comprehensive Firestore Rules Emulator Tests**
-  - Write automated test suite using `@firebase/rules-unit-testing` or Firebase Emulator:
-    - Test that normal user cannot promote self to `superadmin`.
-    - Test that email containing `superadmin` without Firestore role fails authorization.
-    - Test that unauthenticated / non-admin users cannot forge or tamper with `audit_logs`.
-    - Test per-role access across all collections (`farmers`, `collections`, `customers`, `products`, `sales`, `expenses`, `trash`, `settings`).
-  - *Deployment Note:* Rules deployment to production is held until Phase 4 completes.
+- [x] **Task 3.1: Inventory all Firestore operations across `src/` and server Admin SDK in `/api/`**
+- [ ] **Task 3.2: Collection-by-Role Permission Matrix & Decisions for Chaitanya**
+- [ ] **Task 3.3: Rewrite `firestore.rules` from deny-by-default with fail-closed helpers**
+- [ ] **Task 3.4: `users` collection lockdown (read-own, superadmin-read-all, zero client role/active updates)**
+- [ ] **Task 3.5: `settings` and secrets lockdown (deny client writes, no secret leaks)**
+- [ ] **Task 3.6: Business collections validation (bounds, ranges, immutable fields, lifecycle)**
+- [ ] **Task 3.7: `audit_logs` integrity & immutability (actor verification, immutable)**
+- [ ] **Task 3.8: Query & document size limits**
+- [ ] **Task 3.9: Comprehensive matrix unit testing with `@firebase/rules-unit-testing`**
+- [ ] **Task 3.10: Check `firestore.indexes.json` and `firebase.json`**
+- [ ] **Task 3.11: Real app flow verification against emulator**
+- [ ] **Task 3.12: Rollout plan, 1-minute rollback, and manual smoke test guide**
 
 ---
 
