@@ -153,32 +153,20 @@ updated: 2026-11-17T18:24:00+05:30
 ---
 
 ### Phase 6: Production Polish, UI/UX Parity & Verification
-**Status:** ⬜ Not Started  
+**Status:** 🔄 In Progress  
 **Objective:** Finalize production metadata, security headers, clean documentation, package naming, lazy-loading, linting, and translation parity.  
 **Requirements:** SEC-24 (Production assets & headers), SEC-25 (Package name & clean docs), SEC-26 (ESLint & chat lazy-load), SEC-27 (Translation parity test), SEC-28 (Final regression)
 
 **Plans:**
-- [ ] **Plan 6.1: Favicon, Open Graph & Meta Configuration**
-  - Ensure favicon exists in `public/` and is linked from `index.html`.
-  - Add Open Graph meta tags (`og:title`, `og:description`, `og:image`, `og:type`) to `index.html`.
-  - Use a single consistent language for the HTML meta description.
-- [ ] **Plan 6.2: Security Headers in `vercel.json`**
-  - Add HTTP security headers to `vercel.json`:
-    - `X-Content-Type-Options: nosniff`
-    - `X-Frame-Options: DENY`
-    - `X-XSS-Protection: 1; mode=block`
-    - `Referrer-Policy: strict-origin-when-cross-origin`
-    - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
-    - `Content-Security-Policy` tuned for Firebase, Vercel APIs, and fonts.
-- [ ] **Plan 6.3: Package Renaming, `.env.example` & Real `README.md`**
-  - Update `package.json` name from `ai-assisted-dairy-management-system` to `gaudai-dairy-erp`.
-  - Provide a clean, sanitized `.env.example` using only `<PLACEHOLDER>` values.
-  - Write a comprehensive, production-ready `README.md` detailing architecture, local development with Firebase Emulators, deployment, and security model.
-- [ ] **Plan 6.4: ESLint Fixes & Chat Panel Lazy-Loading**
-  - Run `npm run lint` and fix all ESLint errors and warnings across the codebase.
-  - Lazy-load the Gaudai Chat panel component (`React.lazy(() => import('../components/chat/GaudaiChat'))`) so non-chat screens load faster.
-- [ ] **Plan 6.5: Translation Key Parity Test**
-  - Add automated test verifying exact key parity between `src/locales/en/translation.json` and `src/locales/mr/translation.json` (no missing translations in either language).
-- [ ] **Plan 6.6: Repository Sanitation & Final UI/UX Regression Verification**
-  - Permanently remove scratch files (`debug_call.js`, `scratch/`), update `.gitignore`.
-  - End-to-end manual and automated regression verification across all dairy operations (collection, bills, expenses, customers, reports, superadmin) in Marathi and English.
+- [x] **Task 6.1: Repository hygiene (Delete debug_call.js, scratch/, fix .gitignore, clean console.logs)**
+- [ ] **Task 6.2: Project identity (Package naming, version, production README with architecture & env tables)**
+- [ ] **Task 6.3: index.html and branding (Favicon in public/, OG tags, theme-color, lang attribute)**
+- [ ] **Task 6.4: Vercel config & security headers (Rewrites, asset caching, HSTS, CSP report-only)**
+- [ ] **Task 6.5: React Error Boundary & user-facing error handling**
+- [ ] **Task 6.6: ESLint errors resolution (React hooks set-state-in-effect)**
+- [ ] **Task 6.7: Performance & code-splitting (Lazy load chat, import, reports, charts)**
+- [ ] **Task 6.8: Translation parity test & hardcoded string migration**
+- [ ] **Task 6.9: Config cleanup (Centralize GEMINI_MODEL)**
+- [ ] **Task 6.10: Dependency audit & unused package pruning**
+- [ ] **Task 6.11: UI/UX parity check across resolutions (360px & 1280px)**
+- [ ] **Task 6.12: Final self-audit & production go/no-go report**

@@ -14,7 +14,7 @@
 | **Phase 3** | Database & Access Control Hardening (`firestore.rules` + Emulator Tests) | ⬜ Not Started |
 | **Phase 4** | Frontend Egress Refactor (Eliminate Direct Calls to Gemini, Apps Script & Identity Toolkit) | ✅ Complete |
 | **Phase 5** | Secure File Import (Replace `xlsx` with `papaparse` & `exceljs`, Lazy Loading, Limits, Audit) | 🔄 In Progress |
-| **Phase 6** | Production Polish, UI/UX, Meta, Security Headers & Regression Verification | ⬜ Not Started |
+| **Phase 6** | Production Polish, UI/UX, Meta, Security Headers & Regression Verification | 🔄 In Progress |
 
 ---
 
@@ -357,6 +357,50 @@ The codebase was comprehensively audited for all direct and indirect dependencie
     - *Marathi:* `"कृपया फाईल CSV किंवा .xlsx फॉरमॅटमध्ये सेव्ह करून पुन्हा अपलोड करा."`
     - *English:* `"Please save your file as CSV or .xlsx format and upload again."`
   - Maintain all existing UI and components intact without breaking changes until Task 7/8.
+
+---
+
+## Phase 6 Execution Summary
+
+### Phase 6 Checklist
+- [x] **Task 1: Repository hygiene**
+  - Deleted `debug_call.js` and `scratch/` (including `scratch/read_firestore_settings.js` and all one-off test scripts).
+  - Hardened `.gitignore` (.env, .env.*, preserving !.env.example; scratch; dist; logs; service account files; .vercel; sample data).
+  - Removed lingering `console.log` from `src/utils/api.js`; confirmed zero console logs printing user data, tokens, or responses.
+- [ ] **Task 2: Project identity & real documentation**
+  - Set package name to `gaudai-dairy-erp`, add version, replace default Vite README with comprehensive production docs (architecture, local setup, emulator, env tables, deployment order, troubleshooting).
+- [ ] **Task 3: Branding, favicon & Open Graph meta**
+  - Move logo to `public/`, link favicon and apple-touch-icon. Add OG/Twitter tags, theme-color, lang attribute, clean meta description.
+- [ ] **Task 4: Vercel configuration & security headers**
+  - Add SPA rewrites (excluding `/api`), hashed asset caching vs index.html no-cache, HSTS, nosniff, frame-ancestors, Referrer-Policy, Permissions-Policy, Report-Only CSP.
+- [ ] **Task 5: React Error Boundary & friendly error handling**
+  - Add top-level Error Boundary with bilingual Marathi/English retry UI; ensure clean API error messages.
+- [ ] **Task 6: ESLint errors resolution**
+  - Resolve existing React hook errors (setState inside effects) without behavioral regressions.
+- [ ] **Task 7: Performance & code-splitting**
+  - Lazy-load chat, import, reports, and charts via React.lazy/Suspense; report before/after bundle sizes.
+- [ ] **Task 8: Translation key parity & hardcoded strings migration**
+  - Verify 100% key parity between English and Marathi translations, ensure zero empty values or raw key leaks.
+- [ ] **Task 9: Centralized Gemini model configuration**
+  - Ensure single source of truth for `GEMINI_MODEL`, remove stale model comments.
+- [ ] **Task 10: Dependency audit & unused package pruning**
+  - Run `npm audit --omit=dev`, prune unused dependencies.
+- [ ] **Task 11: UI/UX parity verification across resolutions**
+  - Compare screens against baseline commit at 360px and 1280px viewports.
+- [ ] **Task 12: Final production self-audit & go/no-go report**
+  - Validate zero secrets, token enforcement, role matrix, egress isolation, queue durability, build & test success.
+
+---
+
+### Notes for Next Iteration (Phase 6, Task 2)
+- **Next Task:** Task 2 — Project identity.
+- Update `package.json` name to `gaudai-dairy-erp` and ensure version is set.
+- Replace default Vite README with complete production documentation:
+  - Application summary & architecture overview (React 19, Firebase Auth & Firestore, Vercel Serverless `/api`, Google Apps Script, Google Sheets).
+  - Local development instructions (`vercel dev`, Firebase Emulator).
+  - Client public variables vs. Server secret variables tables.
+  - Step-by-step sequential deployment order from PROGRESS.md.
+  - Troubleshooting guide.
 
 ---
 

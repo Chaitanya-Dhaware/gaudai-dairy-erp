@@ -528,7 +528,6 @@ export async function callAPI(action, payload = {}) {
         response = await readFromFirestore(action);
         // If settings doc is not found in Firestore or has no base rate, try to fetch from Apps Script via proxy as fallback
         if (action === 'getSettings' && (!response.success || !response.data?.baseRate)) {
-          console.log('Settings not found in Firestore or incomplete, querying Apps Script as fallback...');
           const gasRes = await fetchFromAppsScript('getSettings', payload);
           if (gasRes && gasRes.success && gasRes.data) {
             response = gasRes;
