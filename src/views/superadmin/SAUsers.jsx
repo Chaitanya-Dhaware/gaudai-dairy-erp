@@ -31,6 +31,7 @@ export default function SAUsers() {
     setLoading(true);
     const res = await loadAllUsers();
     if (res.success) setUsers(res.data);
+    else toast.error(res.error || 'Failed to load users');
     setLoading(false);
   };
 
@@ -70,17 +71,30 @@ export default function SAUsers() {
     try {
       let res;
       if (editing) {
-        res = await updateUser(editing.id || editing.uid, { name: form.name, role: form.role, active: form.active }, currentUser.uid, currentUser.role);
+        res = await updateUser(
+          editing.id || editing.uid,
+          { name: form.name.trim(), email: form.email.trim().toLowerCase(), role: form.role, active: form.active },
+          currentUser.uid,
+          currentUser.role
+        );
       } else {
-        res = await createUser({ email: form.email, name: form.name, role: form.role }, currentUser.uid, currentUser.role);
+        res = await createUser({ email: form.email.trim().toLowerCase(), name: form.name.trim(), role: form.role }, currentUser.uid, currentUser.role);
       }
       if (res.success) {
-        toast.success(editing ? 'User updated!' : 'User created!');
+        if (editing) {
+          toast.success('User updated!');
+        } else {
+          toast.success(
+            res.emailSent
+              ? `User created! Password setup email sent to ${form.email.trim().toLowerCase()}.`
+              : 'User created!'
+          );
+        }
         if (res.resetLink) {
           if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
             try {
               await navigator.clipboard.writeText(res.resetLink);
-              toast.info('Password setup link copied to clipboard to share with user.');
+              toast('Password setup link copied to clipboard.', { icon: '🔑' });
             } catch {
               window.prompt('Password setup link (copy to share with user):', res.resetLink);
             }
@@ -89,7 +103,7 @@ export default function SAUsers() {
           }
         }
         setDrawerOpen(false);
-        load();
+        await load();
       } else {
         toast.error(res.error || 'Operation failed');
       }
@@ -206,9 +220,8 @@ export default function SAUsers() {
               value={form.email}
               onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
               placeholder="staff@dairy.com"
-              disabled={!!editing}
             />
-            {editing && <p className="text-micro text-textSecondary mt-1">Email cannot be changed. Use password reset instead.</p>}
+            {editing && <p className="text-micro text-textSecondary mt-1">Updating email synchronizes with Firebase Authentication.</p>}
           </FormField>
           <FormField label="Role" required error={formErrors.role}>
             <Select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>

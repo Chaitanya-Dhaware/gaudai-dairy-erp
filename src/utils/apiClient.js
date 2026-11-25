@@ -97,8 +97,8 @@ export async function apiRequest(endpoint, options = {}, deps = {}) {
       };
     }
 
-    // 4. Handle 5xx Server Errors with generic client-safe error
-    if (response.status >= 500) {
+    // 4. Handle 5xx Server Errors: shield raw 500/502/504 crashes, but allow safe 503 diagnostics
+    if (response.status >= 500 && response.status !== 503) {
       return {
         success: false,
         error: BILINGUAL_ERRORS.SERVER_ERROR,
@@ -112,6 +112,14 @@ export async function apiRequest(endpoint, options = {}, deps = {}) {
       jsonResult = await response.json();
     } catch {
       jsonResult = { success: response.ok, error: response.statusText };
+    }
+
+    if (response.status === 503) {
+      return {
+        success: false,
+        error: jsonResult.error || BILINGUAL_ERRORS.SERVER_ERROR,
+        code: 503
+      };
     }
 
     if (!response.ok) {
