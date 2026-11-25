@@ -2,9 +2,30 @@ import { authenticateRequest } from './_lib/auth.js';
 import { getAdminAuth, getAdminDb } from './_lib/firebaseAdmin.js';
 
 const VALID_ROLES = ['staff', 'accountant', 'admin', 'superadmin'];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function genLogId() {
   return 'AL_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+}
+
+function mapAuthError(err, fallbackMessage) {
+  const code = err?.code || '';
+  if (code === 'auth/email-already-exists') {
+    return { status: 409, message: 'Email already registered.' };
+  }
+  if (code === 'auth/invalid-email') {
+    return { status: 400, message: 'Invalid email address.' };
+  }
+  if (code === 'auth/user-not-found') {
+    return { status: 404, message: 'Target user not found in authentication service.' };
+  }
+  if (code === 'admin/not-configured') {
+    return { status: 503, message: 'Missing server configuration: Firebase Admin SDK credentials are not configured.' };
+  }
+  if (code === 'app/invalid-credential' || code === 'auth/internal-error' || code === 'auth/network-request-failed') {
+    return { status: 503, message: 'Authentication service unavailable.' };
+  }
+  return { status: 400, message: fallbackMessage };
 }
 
 /**
@@ -24,8 +45,19 @@ export default async function handler(req, res, deps = {}) {
     }
 
     const caller = authResult.user;
-    const adminAuth = deps.auth || getAdminAuth();
-    const adminDb = deps.db || getAdminDb();
+
+    let adminAuth;
+    let adminDb;
+    try {
+      adminAuth = deps.auth || getAdminAuth();
+      adminDb = deps.db || getAdminDb();
+    } catch (err) {
+      console.error('Firebase Admin unavailable in users handler:', err.code || err.message);
+      return res.status(503).json({
+        success: false,
+        error: 'Missing server configuration: Firebase Admin SDK credentials are not configured.'
+      });
+    }
 
     const body = req.body;
     if (!body || typeof body !== 'object') {
@@ -38,10 +70,10 @@ export default async function handler(req, res, deps = {}) {
     if (action === 'create') {
       const { email, name, role } = body;
 
-      if (!email || typeof email !== 'string' || !email.includes('@')) {
-        return res.status(400).json({ success: false, error: 'Valid email address is required.' });
+      if (!email || typeof email !== 'string' || !EMAIL_REGEX.test(email.trim())) {
+        return res.status(400).json({ success: false, error: 'Invalid email address.' });
       }
-      if (!name || typeof name !== 'string') {
+      if (!name || typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ success: false, error: 'User name is required.' });
       }
       if (!role || !VALID_ROLES.includes(role)) {
@@ -51,39 +83,49 @@ export default async function handler(req, res, deps = {}) {
         });
       }
 
+      const normalizedEmail = email.trim().toLowerCase();
+      const trimmedName = name.trim();
+
+      // 1. Create user in Firebase Authentication
+      let userRecord;
       try {
-        // 1. Create user in Firebase Authentication
-        const userRecord = await adminAuth.createUser({
-          email: email.trim().toLowerCase(),
-          displayName: name.trim()
+        userRecord = await adminAuth.createUser({
+          email: normalizedEmail,
+          displayName: trimmedName
         });
+      } catch (err) {
+        console.error('Create user Auth error:', err.code || 'unknown', err.message);
+        const mapped = mapAuthError(err, 'Failed to create user in authentication service.');
+        return res.status(mapped.status).json({ success: false, error: mapped.message });
+      }
 
-        const uid = userRecord.uid;
+      const uid = userRecord.uid;
 
-        // 2. Generate password reset link for initial credential setup.
-        // SECURITY CONTRACT:
-        // - resetLink is returned ONLY in the HTTPS response body to the authenticated Superadmin caller.
-        // - It is NEVER logged in console/server logs.
-        // - It is NEVER stored in Firestore (neither in users/{uid} nor audit_logs).
-        let resetLink = null;
-        try {
-          resetLink = await adminAuth.generatePasswordResetLink(email.trim().toLowerCase());
-        } catch {
-          // If reset link generation fails, user account was created; link can be re-generated
-        }
+      // 2. Generate password reset link for initial credential setup.
+      // SECURITY CONTRACT:
+      // - resetLink is returned ONLY in the HTTPS response body to the authenticated Superadmin caller.
+      // - It is NEVER logged in console/server logs.
+      // - It is NEVER stored in Firestore (neither in users/{uid} nor audit_logs).
+      let resetLink = null;
+      try {
+        resetLink = await adminAuth.generatePasswordResetLink(normalizedEmail);
+      } catch (err) {
+        console.warn('Password reset link generation warning:', err.code || err.message);
+      }
 
-        // 3. Save profile to Cloud Firestore
-        const now = new Date().toISOString();
-        const profile = {
-          uid,
-          email: email.trim().toLowerCase(),
-          name: name.trim(),
-          role,
-          active: true,
-          created_at: now,
-          created_by: caller.uid
-        };
+      // 3. Save profile to Cloud Firestore (rollback Auth user if DB fails)
+      const now = new Date().toISOString();
+      const profile = {
+        uid,
+        email: normalizedEmail,
+        name: trimmedName,
+        role,
+        active: true,
+        created_at: now,
+        created_by: caller.uid
+      };
 
+      try {
         await adminDb.collection('users').doc(uid).set(profile);
 
         // 4. Record immutable audit log entry on server with verified caller UID
@@ -101,22 +143,24 @@ export default async function handler(req, res, deps = {}) {
           reason: 'Super Admin created user',
           timestamp: now
         });
-
-        return res.status(200).json({
-          success: true,
-          data: profile,
-          resetLink
-        });
-      } catch (err) {
-        console.error('Create user error in users handler:', err.message);
-        const safeError = err.code === 'auth/email-already-exists'
-          ? 'A user with this email address already exists.'
-          : 'Failed to create user.';
-        return res.status(400).json({
+      } catch (dbErr) {
+        console.error('Create user Firestore error:', dbErr.code || 'unknown', dbErr.message);
+        if (typeof adminAuth.deleteUser === 'function') {
+          await adminAuth.deleteUser(uid).catch((rollbackErr) => {
+            console.error('Failed to rollback Auth user after DB error:', rollbackErr.message);
+          });
+        }
+        return res.status(503).json({
           success: false,
-          error: safeError
+          error: 'Database update failed. User creation was rolled back.'
         });
       }
+
+      return res.status(200).json({
+        success: true,
+        data: profile,
+        resetLink
+      });
     }
 
     // ─── ACTION: UPDATE USER ──────────────────────────────────────────
@@ -130,47 +174,101 @@ export default async function handler(req, res, deps = {}) {
         return res.status(400).json({ success: false, error: 'Updates payload is required.' });
       }
 
+      const userRef = adminDb.collection('users').doc(uid);
+      let userDoc;
       try {
-        const userRef = adminDb.collection('users').doc(uid);
-        const userDoc = await userRef.get();
+        userDoc = await userRef.get();
+      } catch (dbErr) {
+        console.error('Update user Firestore read error:', dbErr.code || 'unknown', dbErr.message);
+        return res.status(503).json({ success: false, error: 'Database read failed.' });
+      }
 
-        if (!userDoc.exists) {
-          return res.status(404).json({ success: false, error: 'Target user not found.' });
+      if (!userDoc.exists) {
+        return res.status(404).json({ success: false, error: 'Target user not found.' });
+      }
+
+      const before = userDoc.data();
+
+      // Validate incoming update fields
+      if (updates.email !== undefined) {
+        if (typeof updates.email !== 'string' || !EMAIL_REGEX.test(updates.email.trim())) {
+          return res.status(400).json({ success: false, error: 'Invalid email address.' });
         }
+      }
+      if (updates.name !== undefined && (typeof updates.name !== 'string' || !updates.name.trim())) {
+        return res.status(400).json({ success: false, error: 'User name cannot be empty.' });
+      }
+      if (updates.role !== undefined && !VALID_ROLES.includes(updates.role)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}`
+        });
+      }
 
-        const before = userDoc.data();
+      // Guard: Prevent demoting or deactivating the last active superadmin
+      const isDemotingRole = updates.role && updates.role !== 'superadmin';
+      const isDeactivating = updates.active === false;
 
-        // Guard: Prevent demoting or deactivating the last active superadmin
-        const isDemotingRole = updates.role && updates.role !== 'superadmin';
-        const isDeactivating = updates.active === false;
+      if (before.role === 'superadmin' && (isDemotingRole || isDeactivating)) {
+        const activeSuperadminsSnap = await adminDb
+          .collection('users')
+          .where('role', '==', 'superadmin')
+          .where('active', '==', true)
+          .get();
 
-        if (before.role === 'superadmin' && (isDemotingRole || isDeactivating)) {
-          const activeSuperadminsSnap = await adminDb
-            .collection('users')
-            .where('role', '==', 'superadmin')
-            .where('active', '==', true)
-            .get();
-
-          const activeSuperadmins = activeSuperadminsSnap.docs.filter(d => d.id === uid || d.data().active !== false);
-          if (activeSuperadmins.length <= 1) {
-            return res.status(400).json({
-              success: false,
-              error: 'Cannot demote or deactivate the last active Super Admin.'
-            });
-          }
+        const activeSuperadmins = activeSuperadminsSnap.docs.filter(d => d.id === uid || d.data().active !== false);
+        if (activeSuperadmins.length <= 1) {
+          return res.status(400).json({
+            success: false,
+            error: 'Cannot demote or deactivate the last active Super Admin.'
+          });
         }
+      }
 
-        // Filter allowed updates
-        const safeUpdates = {};
-        if (updates.name && typeof updates.name === 'string') safeUpdates.name = updates.name.trim();
-        if (updates.role && VALID_ROLES.includes(updates.role)) safeUpdates.role = updates.role;
-        if (typeof updates.active === 'boolean') safeUpdates.active = updates.active;
-        safeUpdates.updated_at = new Date().toISOString();
-        safeUpdates.updated_by = caller.uid;
+      // Build sanitized Firestore & Firebase Auth updates
+      const safeUpdates = {};
+      const authUpdates = {};
 
+      if (updates.name && typeof updates.name === 'string') {
+        const trimmedName = updates.name.trim();
+        safeUpdates.name = trimmedName;
+        if (trimmedName !== before.name) {
+          authUpdates.displayName = trimmedName;
+        }
+      }
+      if (updates.email && typeof updates.email === 'string') {
+        const normalizedEmail = updates.email.trim().toLowerCase();
+        if (normalizedEmail !== (before.email || '').toLowerCase()) {
+          safeUpdates.email = normalizedEmail;
+          authUpdates.email = normalizedEmail;
+        }
+      }
+      if (updates.role && VALID_ROLES.includes(updates.role)) {
+        safeUpdates.role = updates.role;
+      }
+      if (typeof updates.active === 'boolean') {
+        safeUpdates.active = updates.active;
+        authUpdates.disabled = !updates.active;
+      }
+
+      safeUpdates.updated_at = new Date().toISOString();
+      safeUpdates.updated_by = caller.uid;
+
+      // 1. Synchronize Firebase Authentication record when Auth-backed fields changed
+      if (Object.keys(authUpdates).length > 0 && typeof adminAuth.updateUser === 'function') {
+        try {
+          await adminAuth.updateUser(uid, authUpdates);
+        } catch (authErr) {
+          console.error('Update user Auth error:', authErr.code || 'unknown', authErr.message);
+          const mapped = mapAuthError(authErr, 'Failed to update user in authentication service.');
+          return res.status(mapped.status).json({ success: false, error: mapped.message });
+        }
+      }
+
+      // 2. Persist profile changes in Firestore and write server audit log
+      try {
         await userRef.update(safeUpdates);
 
-        // Write server audit log
         const logId = genLogId();
         await adminDb.collection('audit_logs').doc(logId).set({
           log_id: logId,
@@ -185,12 +283,15 @@ export default async function handler(req, res, deps = {}) {
           reason: updates._reason || 'Super Admin updated user',
           timestamp: new Date().toISOString()
         });
-
-        return res.status(200).json({ success: true, data: { ...before, ...safeUpdates } });
-      } catch (err) {
-        console.error('Update user error in users handler:', err.message);
-        return res.status(500).json({ success: false, error: 'Failed to update user.' });
+      } catch (dbErr) {
+        console.error('Update user Firestore error:', dbErr.code || 'unknown', dbErr.message);
+        return res.status(503).json({
+          success: false,
+          error: 'Database update failed.'
+        });
       }
+
+      return res.status(200).json({ success: true, data: { ...before, ...safeUpdates } });
     }
 
     // ─── ACTION: LIST USERS ───────────────────────────────────────────
@@ -201,7 +302,7 @@ export default async function handler(req, res, deps = {}) {
         return res.status(200).json({ success: true, data: users });
       } catch (err) {
         console.error('List users error in users handler:', err.message);
-        return res.status(500).json({ success: false, error: 'Failed to retrieve users.' });
+        return res.status(503).json({ success: false, error: 'Failed to retrieve users from database.' });
       }
     }
 

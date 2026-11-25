@@ -114,6 +114,11 @@ describe('Serverless API Proxy & Security Gateway', () => {
         email,
         displayName
       })),
+      updateUser: vi.fn(async (uid, updates) => ({
+        uid,
+        ...updates
+      })),
+      deleteUser: vi.fn(async () => undefined),
       generatePasswordResetLink: vi.fn(async (email) => `https://auth.gaudai.com/reset?email=${email}`)
     };
   });
@@ -511,6 +516,109 @@ describe('Serverless API Proxy & Security Gateway', () => {
       await usersHandler(req, res, { auth: mockAuth, db: mockDb });
       expect(res.statusCode).toBe(400);
       expect(res.body.error).toContain('Cannot demote or deactivate the last active Super Admin');
+    });
+
+    it('creates admin, staff, and accountant users cleanly', async () => {
+      for (const role of ['admin', 'staff', 'accountant']) {
+        const req = {
+          method: 'POST',
+          headers: { authorization: 'Bearer user_token_sa_1' },
+          body: {
+            action: 'create',
+            email: `${role}@gaudai.com`,
+            name: `Test ${role}`,
+            role
+          }
+        };
+        const res = createMockRes();
+        await usersHandler(req, res, { auth: mockAuth, db: mockDb });
+        expect(res.statusCode).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.role).toBe(role);
+      }
+    });
+
+    it('returns 409 when creating a user with an already registered email', async () => {
+      mockAuth.createUser.mockRejectedValueOnce(Object.assign(new Error('Email exists'), { code: 'auth/email-already-exists' }));
+
+      const req = {
+        method: 'POST',
+        headers: { authorization: 'Bearer user_token_sa_1' },
+        body: {
+          action: 'create',
+          email: 'duplicate@gaudai.com',
+          name: 'Duplicate User',
+          role: 'staff'
+        }
+      };
+      const res = createMockRes();
+      await usersHandler(req, res, { auth: mockAuth, db: mockDb });
+      expect(res.statusCode).toBe(409);
+      expect(res.body.error).toBe('Email already registered.');
+    });
+
+    it('updates existing user name, email, role, and active status and syncs Firebase Auth', async () => {
+      usersCollection.set('staff_1', {
+        uid: 'staff_1',
+        name: 'Old Name',
+        email: 'old@gaudai.com',
+        role: 'staff',
+        active: true
+      });
+
+      const req = {
+        method: 'POST',
+        headers: { authorization: 'Bearer user_token_sa_1' },
+        body: {
+          action: 'update',
+          uid: 'staff_1',
+          updates: {
+            name: 'New Name',
+            email: 'new@gaudai.com',
+            role: 'accountant',
+            active: false
+          }
+        }
+      };
+      const res = createMockRes();
+      await usersHandler(req, res, { auth: mockAuth, db: mockDb });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.name).toBe('New Name');
+      expect(res.body.data.email).toBe('new@gaudai.com');
+      expect(res.body.data.role).toBe('accountant');
+      expect(res.body.data.active).toBe(false);
+
+      expect(mockAuth.updateUser).toHaveBeenCalledWith('staff_1', {
+        displayName: 'New Name',
+        email: 'new@gaudai.com',
+        disabled: true
+      });
+    });
+
+    it('returns 503 with clear diagnostic when Firebase Admin credentials are missing', async () => {
+      const savedPid = process.env.FIREBASE_PROJECT_ID;
+      const savedEmail = process.env.FIREBASE_CLIENT_EMAIL;
+      const savedKey = process.env.FIREBASE_PRIVATE_KEY;
+      delete process.env.FIREBASE_PROJECT_ID;
+      delete process.env.FIREBASE_CLIENT_EMAIL;
+      delete process.env.FIREBASE_PRIVATE_KEY;
+
+      const req = {
+        method: 'POST',
+        headers: { authorization: 'Bearer user_token_sa_1' },
+        body: { action: 'list' }
+      };
+      const res = createMockRes();
+      await usersHandler(req, res);
+
+      expect(res.statusCode).toBe(503);
+      expect(res.body.error).toContain('Missing server configuration');
+
+      if (savedPid) process.env.FIREBASE_PROJECT_ID = savedPid;
+      if (savedEmail) process.env.FIREBASE_CLIENT_EMAIL = savedEmail;
+      if (savedKey) process.env.FIREBASE_PRIVATE_KEY = savedKey;
     });
   });
 });

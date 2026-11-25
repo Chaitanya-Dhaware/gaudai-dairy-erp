@@ -31,8 +31,20 @@ export async function authenticateRequest(req, options = {}, deps = {}) {
     };
   }
 
-  const adminAuth = deps.auth || getAdminAuth();
-  const adminDb = deps.db || getAdminDb();
+  let adminAuth;
+  let adminDb;
+  try {
+    adminAuth = deps.auth || getAdminAuth();
+    adminDb = deps.db || getAdminDb();
+  } catch (err) {
+    console.error('Firebase Admin unavailable in authenticateRequest:', err.code || err.message);
+    return {
+      error: {
+        status: 503,
+        message: 'Missing server configuration: Firebase Admin SDK credentials are not configured.'
+      }
+    };
+  }
 
   let decodedToken;
   try {

@@ -359,7 +359,38 @@ export async function parseExcelData(file) {
         const sheetsMap = {};
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
-          sheetsMap[sheetName] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+          const rows = XLSX.utils.sheet_to_json(worksheet, {
+            defval: '',
+            raw: false,
+            blankrows: false
+          });
+
+          // Normalize every cell to a JSON-safe primitive. SheetJS can expose
+          // special values (e.g. errors, dates, formula metadata) that should
+          // never leak into later JSON serialization or preview components.
+          sheetsMap[sheetName] = rows.map((row) => {
+            const safeRow = {};
+            for (const [key, value] of Object.entries(row || {})) {
+              if (value === null || value === undefined) {
+                safeRow[String(key)] = '';
+              } else if (
+                typeof value === 'string' ||
+                typeof value === 'number' ||
+                typeof value === 'boolean'
+              ) {
+                safeRow[String(key)] = Number.isFinite(value) || typeof value !== 'number'
+                  ? value
+                  : String(value);
+              } else if (value instanceof Date) {
+                safeRow[String(key)] = Number.isNaN(value.getTime())
+                  ? ''
+                  : value.toISOString();
+              } else {
+                safeRow[String(key)] = String(value);
+              }
+            }
+            return safeRow;
+          });
         }
 
         resolve(sheetsMap);

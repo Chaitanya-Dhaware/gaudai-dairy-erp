@@ -8,6 +8,9 @@ const MAX_REQUESTS_PER_WINDOW = 30; // 30 requests / min / user
 
 // Permitted Gemini models
 export const ALLOWED_GEMINI_MODELS = new Set([
+  'gemini-3.8-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.5-flash',
   'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
   'gemini-2.5-pro',
@@ -20,7 +23,7 @@ export const ALLOWED_GEMINI_MODELS = new Set([
 // Default model is resolved via GEMINI_MODEL env var if configured.
 // NOTE: Verify current Google AI model names and lifecycle status periodically;
 // models retired by Google will be rejected by the API.
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 
 // In-memory sliding rate limiter per user UID (fallback)
 const rateLimitMap = new Map();

@@ -71,11 +71,22 @@ export async function loadAllUsers() {
  */
 export async function createUser({ email, name, role }) {
   try {
-    const res = await callUsersApi('create', { email, name, role });
+    const normalizedEmail = email.trim().toLowerCase();
+    const res = await callUsersApi('create', { email: normalizedEmail, name: name.trim(), role });
     if (!res.success) {
       return { success: false, error: res.error || 'Failed to create user' };
     }
-    return { success: true, data: res.data, resetLink: res.resetLink };
+
+    // Trigger Firebase password setup/reset email delivery
+    let emailSent = false;
+    try {
+      await sendPasswordResetEmail(auth, normalizedEmail);
+      emailSent = true;
+    } catch (mailErr) {
+      console.warn('Password setup email delivery warning:', mailErr?.code || mailErr?.message);
+    }
+
+    return { success: true, data: res.data, resetLink: res.resetLink, emailSent };
   } catch (err) {
     console.error('createUser error:', err);
     return { success: false, error: err.message };
